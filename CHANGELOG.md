@@ -11,6 +11,9 @@ All notable, unreleased changes to this project will be documented in this file.
 - Add webhook handler to BasePlugin and PluginManager - #5884 by @korycins
 - Invoices backend - #5732 by @tomaszszymanski129
 - Support pushing webhook events to message queues - #5940 by @patrys, @korycins
+- Adyen drop-in integration - #5914 by @korycins, @IKarbowiak
+- Add `change_currency` command - #6016 by @maarcingebala
+- Send a confirmation email when the order is canceled or refunded - #6017
 
 ### Breaking Changes
 
