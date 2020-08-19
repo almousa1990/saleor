@@ -87,6 +87,11 @@ class DraftOrderCreate(ModelMutation, I18nMixin):
         billing_address = data.pop("billing_address", None)
         cleaned_input = super().clean_input(info, instance, data)
 
+        #customer is removed from order
+        if cleaned_input["user"] is None and instance.user is not None:
+            instance.billing_address = None
+            instance.shipping_address = None
+
         lines = data.pop("lines", None)
         if lines:
             variant_ids = [line.get("variant_id") for line in lines]
@@ -209,7 +214,7 @@ class DraftOrderUpdate(DraftOrderCreate):
         permissions = (OrderPermissions.MANAGE_ORDERS,)
         error_type_class = OrderError
         error_type_field = "order_errors"
-
+ 
 
 class DraftOrderDelete(ModelDeleteMutation):
     class Arguments:
