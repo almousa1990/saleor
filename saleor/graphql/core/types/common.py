@@ -28,6 +28,7 @@ from ..enums import (
     WebhookErrorCode,
     WeightUnitsEnum,
     WishlistErrorCode,
+    UploadErrorCode
 )
 from .money import VAT
 
@@ -133,6 +134,8 @@ class OrderError(Error):
 class InvoiceError(Error):
     code = InvoiceErrorCode(description="The error code.", required=True)
 
+class UploadError(Error):
+    code = UploadErrorCode(description="The error code.", required=True)
 
 class PermissionGroupError(Error):
     code = PermissionGroupErrorCode(description="The error code.", required=True)
