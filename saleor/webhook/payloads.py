@@ -187,13 +187,10 @@ def generate_product_payload(product: "Product"):
 
     product_fields = (
         "name",
-        "description_json",
+        "description_html",
         "currency",
         "minimal_variant_price_amount",
-        "attributes",
         "updated_at",
-        "charge_taxes",
-        "weight",
         "publication_date",
         "is_published",
         "private_metadata",
@@ -206,6 +203,8 @@ def generate_product_payload(product: "Product"):
         "price_amount",
         "track_inventory",
         "quantity",
+        "charge_taxes",
+        "weight",
         "quantity_allocated",
         "cost_price_amount",
         "private_metadata",
@@ -215,7 +214,6 @@ def generate_product_payload(product: "Product"):
         [product],
         fields=product_fields,
         additional_fields={
-            "category": (lambda p: p.category, ("name", "slug")),
             "collections": (lambda p: p.collections.all(), ("name", "slug")),
             "variants": (lambda p: p.variants.all(), product_variant_fields),
         },

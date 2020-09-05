@@ -32,6 +32,7 @@ from ..discount import DiscountInfo
 from ..discount.utils import calculate_discounted_price
 from ..seo.models import SeoModel, SeoModelTranslation
 from . import AttributeInputType
+from taggit.managers import TaggableManager
 
 if TYPE_CHECKING:
     # flake8: noqa
@@ -86,7 +87,26 @@ class CategoryTranslation(SeoModelTranslation):
             self.category_id,
         )
 
+class ProductVendor(ModelWithMetadata):
+    name = models.CharField(max_length=250)
+    slug = models.SlugField(max_length=255, unique=True, allow_unicode=True)
 
+    class Meta:
+        ordering = ("slug",)
+        app_label = "product"
+
+    def __str__(self) -> str:
+        return self.name
+
+    def __repr__(self) -> str:
+        class_ = type(self)
+        return "<%s.%s(pk=%r, name=%r)>" % (
+            class_.__module__,
+            class_.__name__,
+            self.pk,
+            self.name,
+        )
+        
 class ProductType(ModelWithMetadata):
     name = models.CharField(max_length=250)
     slug = models.SlugField(max_length=255, unique=True, allow_unicode=True)
@@ -229,22 +249,26 @@ class ProductsQueryset(PublishedQuerySet):
 
 class Product(SeoModel, ModelWithMetadata, PublishableModel):
     product_type = models.ForeignKey(
-        ProductType, related_name="products", on_delete=models.CASCADE
+        ProductType,
+        models.SET_NULL,
+        blank=True,
+        null=True,
     )
+    vendor = models.ForeignKey(
+        ProductVendor,
+        models.SET_NULL,
+        blank=True,
+        null=True,
+    )
+    tags = TaggableManager()
+    options = JSONField(blank=True, default=dict)
     name = models.CharField(max_length=250)
     slug = models.SlugField(max_length=255, unique=True, allow_unicode=True)
     description = models.TextField(blank=True)
     description_json = SanitizedJSONField(
         blank=True, default=dict, sanitizer=clean_draft_js
     )
-    category = models.ForeignKey(
-        Category,
-        related_name="products",
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-    )
-
+    description_html = models.TextField(blank=True)
     currency = models.CharField(
         max_length=settings.DEFAULT_CURRENCY_CODE_LENGTH,
         default=settings.DEFAULT_CURRENCY,
@@ -314,6 +338,7 @@ class ProductTranslation(SeoModelTranslation):
     description_json = SanitizedJSONField(
         blank=True, default=dict, sanitizer=clean_draft_js
     )
+    description_html = models.TextField(blank=True)
 
     class Meta:
         unique_together = (("language_code", "product"),)
@@ -367,6 +392,8 @@ class ProductVariantQueryset(models.QuerySet):
 
 class ProductVariant(ModelWithMetadata):
     sku = models.CharField(max_length=255, unique=True)
+    barcode = models.CharField(max_length=255, blank=True, null=True)
+    selected_options = JSONField(blank=True, default=dict)
     name = models.CharField(max_length=255, blank=True)
     currency = models.CharField(
         max_length=settings.DEFAULT_CURRENCY_CODE_LENGTH,
@@ -385,6 +412,14 @@ class ProductVariant(ModelWithMetadata):
     images = models.ManyToManyField("ProductImage", through="VariantImage")
     track_inventory = models.BooleanField(default=True)
 
+    compare_at_price_amount = models.DecimalField(
+        max_digits=settings.DEFAULT_MAX_DIGITS,
+        decimal_places=settings.DEFAULT_DECIMAL_PLACES,
+        blank=True,
+        null=True,
+    )
+    compare_at_price = MoneyField(amount_field="compare_at_price_amount", currency_field="currency")
+
     cost_price_amount = models.DecimalField(
         max_digits=settings.DEFAULT_MAX_DIGITS,
         decimal_places=settings.DEFAULT_DECIMAL_PLACES,
@@ -392,9 +427,13 @@ class ProductVariant(ModelWithMetadata):
         null=True,
     )
     cost_price = MoneyField(amount_field="cost_price_amount", currency_field="currency")
+    
+
     weight = MeasurementField(
         measurement=Weight, unit_choices=WeightUnits.CHOICES, blank=True, null=True
     )
+
+    require_shipping = models.BooleanField(default=False)
 
     objects = ProductVariantQueryset.as_manager()
     translated = TranslationProxy()
@@ -419,10 +458,10 @@ class ProductVariant(ModelWithMetadata):
         )
 
     def get_weight(self):
-        return self.weight or self.product.weight or self.product.product_type.weight
+        return self.weight or self.product.weight
 
     def is_shipping_required(self) -> bool:
-        return self.product.product_type.is_shipping_required
+        return self.require_shipping
 
     def is_digital(self) -> bool:
         is_digital = self.product.product_type.is_digital
@@ -837,6 +876,7 @@ class Collection(SeoModel, ModelWithMetadata, PublishableModel):
     background_image_alt = models.CharField(max_length=128, blank=True)
     description = models.TextField(blank=True)
     description_json = JSONField(blank=True, default=dict)
+    description_html = models.TextField(blank=True)
 
     translated = TranslationProxy()
 
@@ -855,6 +895,7 @@ class CollectionTranslation(SeoModelTranslation):
     name = models.CharField(max_length=128)
     description = models.TextField(blank=True)
     description_json = JSONField(blank=True, default=dict)
+    description_html = JSONField(blank=True, default=dict)
 
     class Meta:
         unique_together = (("language_code", "collection"),)

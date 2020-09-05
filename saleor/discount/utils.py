@@ -54,7 +54,6 @@ def get_product_discount_on_sale(
     """Return discount value if product is on sale or raise NotApplicable."""
     is_product_on_sale = (
         product.id in discount.product_ids
-        or product.category_id in discount.category_ids
         or product_collections.intersection(discount.collection_ids)
     )
     if is_product_on_sale:

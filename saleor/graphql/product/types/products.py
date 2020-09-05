@@ -62,61 +62,6 @@ from .attributes import Attribute, SelectedAttribute
 from .digital_contents import DigitalContent
 
 
-def resolve_attribute_list(
-    instance: Union[models.Product, models.ProductVariant], *, user
-) -> List[SelectedAttribute]:
-    """Resolve attributes from a product into a list of `SelectedAttribute`s.
-
-    Note: you have to prefetch the below M2M fields.
-        - product_type -> attribute[rel] -> [rel]assignments -> values
-        - product_type -> attribute[rel] -> attribute
-    """
-    resolved_attributes = []
-    attributes_qs = None
-
-    # Retrieve the product type
-    if isinstance(instance, models.Product):
-        product_type = instance.product_type
-        product_type_attributes_assoc_field = "attributeproduct"
-        assigned_attribute_instance_field = "productassignments"
-        assigned_attribute_instance_filters = {"product_id": instance.pk}
-        if hasattr(product_type, "storefront_attributes"):
-            attributes_qs = product_type.storefront_attributes  # type: ignore
-    elif isinstance(instance, models.ProductVariant):
-        product_type = instance.product.product_type
-        product_type_attributes_assoc_field = "attributevariant"
-        assigned_attribute_instance_field = "variantassignments"
-        assigned_attribute_instance_filters = {"variant_id": instance.pk}
-    else:
-        raise AssertionError(f"{instance.__class__.__name__} is unsupported")
-
-    # Retrieve all the product attributes assigned to this product type
-    if not attributes_qs:
-        attributes_qs = getattr(product_type, product_type_attributes_assoc_field)
-        attributes_qs = attributes_qs.get_visible_to_user(user)
-
-    # An empty QuerySet for unresolved values
-    empty_qs = models.AttributeValue.objects.none()
-
-    # Goes through all the attributes assigned to the product type
-    # The assigned values are returned as a QuerySet, but will assign a
-    # dummy empty QuerySet if no values are assigned to the given instance.
-    for attr_data_rel in attributes_qs:
-        attr_instance_data = getattr(attr_data_rel, assigned_attribute_instance_field)
-
-        # Retrieve the instance's associated data
-        attr_data = attr_instance_data.filter(**assigned_attribute_instance_filters)
-        attr_data = attr_data.first()
-
-        # Return the instance's attribute values if the assignment was found,
-        # otherwise it sets the values as an empty QuerySet
-        values = attr_data.values.all() if attr_data is not None else empty_qs
-        resolved_attributes.append(
-            SelectedAttribute(attribute=attr_data_rel.attribute, values=values)
-        )
-    return resolved_attributes
-
-
 class Margin(graphene.ObjectType):
     start = graphene.Int()
     stop = graphene.Int()
@@ -218,12 +163,10 @@ class ProductVariant(CountableDjangoObjectType):
         ),
     )
 
-    attributes = graphene.List(
-        graphene.NonNull(SelectedAttribute),
-        required=True,
-        description="List of attributes assigned to this variant.",
-    )
+    compare_at_price = graphene.Field(Money, description="The compare-at price of the variant.")
+
     cost_price = graphene.Field(Money, description="Cost price of the variant.")
+    
     margin = graphene.Int(description="Gross margin percentage value.")
     quantity_ordered = graphene.Int(description="Total quantity ordered.")
     revenue = graphene.Field(
@@ -271,7 +214,7 @@ class ProductVariant(CountableDjangoObjectType):
         description = (
             "Represents a version of a product such as different size or color."
         )
-        only_fields = ["id", "name", "product", "sku", "track_inventory", "weight"]
+        only_fields = ["id", "name", "product", "sku","barcode", "track_inventory", "weight"]
         interfaces = [relay.Node, ObjectWithMetadata]
         model = models.ProductVariant
 
@@ -306,10 +249,6 @@ class ProductVariant(CountableDjangoObjectType):
         return AvailableQuantityByProductVariantIdAndCountryCodeLoader(
             info.context
         ).load((root.id, info.context.country))
-
-    @staticmethod
-    def resolve_attributes(root: models.ProductVariant, info):
-        return SelectedAttributesByProductVariantIdLoader(info.context).load(root.id)
 
     @staticmethod
     @permission_required(ProductPermissions.MANAGE_PRODUCTS)
@@ -457,11 +396,12 @@ class Product(CountableDjangoObjectType):
     tax_type = graphene.Field(
         TaxType, description="A type of tax. Assigned by enabled tax gateway"
     )
-    attributes = graphene.List(
-        graphene.NonNull(SelectedAttribute),
-        required=True,
-        description="List of attributes assigned to this product.",
+    tags = graphene.List(
+        graphene.NonNull(graphene.String),
+        required=False,
+        description="List of tags assigned to this product",
     )
+
     purchase_cost = graphene.Field(MoneyRange)
     margin = graphene.Field(Margin)
     image_by_id = graphene.Field(
@@ -485,10 +425,10 @@ class Product(CountableDjangoObjectType):
         interfaces = [relay.Node, ObjectWithMetadata]
         model = models.Product
         only_fields = [
-            "category",
             "charge_taxes",
             "description",
             "description_json",
+            "description_html",
             "id",
             "is_published",
             "name",
@@ -500,14 +440,6 @@ class Product(CountableDjangoObjectType):
             "updated_at",
             "weight",
         ]
-
-    @staticmethod
-    def resolve_category(root: models.Product, info):
-        category_id = root.category_id
-        if category_id is None:
-            return None
-
-        return CategoryByIdLoader(info.context).load(category_id)
 
     @staticmethod
     def resolve_tax_type(root: models.Product, info):
@@ -571,10 +503,6 @@ class Product(CountableDjangoObjectType):
         return root.is_visible and in_stock
 
     @staticmethod
-    def resolve_attributes(root: models.Product, info):
-        return SelectedAttributesByProductIdLoader(info.context).load(root.id)
-
-    @staticmethod
     @permission_required(ProductPermissions.MANAGE_PRODUCTS)
     def resolve_purchase_cost(root: models.Product, *_args):
         purchase_cost, _ = get_product_costs_data(root)
@@ -636,19 +564,6 @@ class ProductType(CountableDjangoObjectType):
     products = PrefetchingConnectionField(
         Product, description="List of products of this type."
     )
-    tax_rate = TaxRateType(description="A type of tax rate.")
-    tax_type = graphene.Field(
-        TaxType, description="A type of tax. Assigned by enabled tax gateway"
-    )
-    variant_attributes = graphene.List(
-        Attribute, description="Variant attributes of that product type."
-    )
-    product_attributes = graphene.List(
-        Attribute, description="Product attributes of that product type."
-    )
-    available_attributes = FilterInputConnectionField(
-        Attribute, filter=AttributeFilterInput()
-    )
 
     class Meta:
         description = (
@@ -658,45 +573,14 @@ class ProductType(CountableDjangoObjectType):
         interfaces = [relay.Node, ObjectWithMetadata]
         model = models.ProductType
         only_fields = [
-            "has_variants",
             "id",
-            "is_digital",
-            "is_shipping_required",
             "name",
-            "slug",
-            "weight",
-            "tax_type",
+            "slug"
         ]
-
-    @staticmethod
-    def resolve_tax_type(root: models.ProductType, info):
-        tax_data = info.context.plugins.get_tax_code_from_object_meta(root)
-        return TaxType(tax_code=tax_data.code, description=tax_data.description)
-
-    @staticmethod
-    def resolve_tax_rate(root: models.ProductType, _info, **_kwargs):
-        # FIXME this resolver should be dropped after we drop tax_rate from API
-        if not hasattr(root, "meta"):
-            return None
-        return root.get_value_from_metadata("vatlayer.code")
-
-    @staticmethod
-    def resolve_product_attributes(root: models.ProductType, *_args, **_kwargs):
-        return root.product_attributes.product_attributes_sorted().all()
-
-    @staticmethod
-    def resolve_variant_attributes(root: models.ProductType, *_args, **_kwargs):
-        return root.variant_attributes.variant_attributes_sorted().all()
 
     @staticmethod
     def resolve_products(root: models.ProductType, info, **_kwargs):
         return root.products.visible_to_user(info.context.user)
-
-    @staticmethod
-    @permission_required(ProductPermissions.MANAGE_PRODUCTS)
-    def resolve_available_attributes(root: models.ProductType, info, **kwargs):
-        qs = models.Attribute.objects.get_unassigned_attributes(root.pk)
-        return resolve_attributes(info, qs=qs, **kwargs)
 
     @staticmethod
     @permission_required(ProductPermissions.MANAGE_PRODUCTS)
@@ -711,9 +595,6 @@ class ProductType(CountableDjangoObjectType):
     def __resolve_reference(root, _info, **_kwargs):
         return graphene.Node.get_node_from_global_id(_info, root.id)
 
-    @staticmethod
-    def resolve_weight(root: models.ProductType, _info, **_kwargs):
-        return convert_weight_to_default_weight_unit(root.weight)
 
 
 @key(fields="id")
@@ -731,6 +612,7 @@ class Collection(CountableDjangoObjectType):
         only_fields = [
             "description",
             "description_json",
+            "description_html",
             "id",
             "is_published",
             "name",
