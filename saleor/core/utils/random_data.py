@@ -48,9 +48,7 @@ from ...product.models import (
     AssignedProductAttribute,
     AssignedVariantAttribute,
     Attribute,
-    AttributeProduct,
     AttributeValue,
-    AttributeVariant,
     Category,
     Collection,
     CollectionProduct,
@@ -247,18 +245,6 @@ def create_product_variants(variants_data):
         create_stocks(variant, quantity=quantity)
 
 
-def assign_attributes_to_product_types(
-    association_model: Union[Type[AttributeProduct], Type[AttributeVariant]],
-    attributes: list,
-):
-    for value in attributes:
-        pk = value["pk"]
-        defaults = value["fields"]
-        defaults["attribute_id"] = defaults.pop("attribute")
-        defaults["product_type_id"] = defaults.pop("product_type")
-        association_model.objects.update_or_create(pk=pk, defaults=defaults)
-
-
 def assign_attributes_to_products(product_attributes):
     for value in product_attributes:
         pk = value["pk"]
@@ -317,12 +303,7 @@ def create_products_by_schema(placeholder_dir, create_images):
         create_images=create_images,
     )
     create_product_variants(variants_data=types["product.productvariant"])
-    assign_attributes_to_product_types(
-        AttributeProduct, attributes=types["product.attributeproduct"]
-    )
-    assign_attributes_to_product_types(
-        AttributeVariant, attributes=types["product.attributevariant"]
-    )
+
     assign_attributes_to_products(
         product_attributes=types["product.assignedproductattribute"]
     )

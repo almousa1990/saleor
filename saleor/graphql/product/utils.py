@@ -92,7 +92,7 @@ def get_used_variants_attribute_values(product):
     """
     variants = (
         product.variants.prefetch_related("attributes__values")
-        .prefetch_related("attributes__assignment")
+        .prefetch_related("attributes__attribute")
         .all()
     )
     used_attribute_values = []

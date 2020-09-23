@@ -52,6 +52,7 @@ from ..utils import (
     validate_attribute_input_for_variant,
 )
 
+from ....warehouse import models as warehouse_models
 
 from django.core.files.base import ContentFile
 from urllib import request
@@ -512,10 +513,14 @@ class StockInput(graphene.InputObjectType):
 
 class ProductVariantInput(graphene.InputObjectType):
 
-    selected_options = graphene.List(
-        graphene.NonNull(graphene.String),
+    id = graphene.ID(
+        required=False, description="ID of a product variant to update."
+    )
+
+    attributes = graphene.List(
+        AttributeValueInput,
         required=False,
-        description="The custom properties that a shop owner uses to define product variants.",
+        description="List of attributes specific to this variant.",
     )
 
     charge_taxes = graphene.Boolean(
@@ -540,8 +545,6 @@ class ProductVariantInput(graphene.InputObjectType):
     )
     weight = WeightScalar(description="Weight of the Product Variant.", required=False)
 
-
-class ProductVariantCreateInput(ProductVariantInput):
     product = graphene.ID(
         description="Product ID of which type is the variant.",
         name="product",
@@ -554,14 +557,27 @@ class ProductVariantCreateInput(ProductVariantInput):
     )
 
 
-class ProductInput(graphene.InputObjectType):
-    product_type = graphene.String(
-        description="The product type specified by the merchant.")
 
-    options = graphene.List(
-        graphene.NonNull(graphene.String),
-        required=False,
-        description="List of custom product options (maximum of 3 per product).",
+class ImageInput(graphene.InputObjectType):
+    alt = graphene.String(description="Alt text for an image.")
+    url = graphene.String(
+        description="The URL of the image. May be a staged upload URL.")
+
+        
+class ProductInput(graphene.InputObjectType):
+    id = graphene.ID(
+        required=False, description="ID of a product variant to update."
+    )
+    attributes = graphene.List(AttributeValueInput, description="List of attributes.")
+
+    product_type = graphene.ID(
+        description="ID of the type that product belongs to.",
+        name="productType"
+    )
+
+    vendor = graphene.ID(
+        description="ID of the Vendor.",
+        name="vendor"
     )
 
     publication_date = graphene.types.datetime.Date(
@@ -585,21 +601,15 @@ class ProductInput(graphene.InputObjectType):
         required=False,
         description="List of tags that have been added to the product",
     )
-
-    vendor = graphene.String(description="The name of the product's vendor.")
-
-
-class ImageInput(graphene.InputObjectType):
-    alt = graphene.String(description="Alt text for an image.")
-    url = graphene.String(
-        description="The URL of the image. May be a staged upload URL.")
-
-
-class ProductCreateInput(ProductInput):
-    variants = graphene.List(graphene.NonNull(ProductVariantCreateInput),
+    variants = graphene.List(graphene.NonNull(ProductVariantInput),
                              description="A list of variants associated with the product.")
+
+        
     images = graphene.List(graphene.NonNull(ImageInput),
-                           description="The images to associate with the product")
+                        description="The images to associate with the product")
+
+
+
 
 
 T_INPUT_MAP = List[Tuple[models.Attribute, List[str]]]
@@ -729,10 +739,10 @@ class AttributeAssignmentMixin:
         - ensure all attributes are passed
         - ensure the values are correct for a variant
         """
-        if len(cleaned_input) != qs.count():
-            raise ValidationError(
-                "All attributes must take a value", code=ProductErrorCode.REQUIRED.value
-            )
+        #if len(cleaned_input) != qs.count():
+        #    raise ValidationError(
+        #        "All attributes must take a value", code=ProductErrorCode.REQUIRED.value
+        #    )
 
         for attribute, values in cleaned_input:
             validate_attribute_input_for_variant(attribute, values)
@@ -824,8 +834,9 @@ class AttributeAssignmentMixin:
 
 class ProductCreate(ModelMutation):
     class Arguments:
-        input = ProductCreateInput(
+        input = ProductInput(
             required=True, description="Fields required to create a product."
+            
         )
 
     class Meta:
@@ -834,6 +845,15 @@ class ProductCreate(ModelMutation):
         permissions = (ProductPermissions.MANAGE_PRODUCTS,)
         error_type_class = ProductError
         error_type_field = "product_errors"
+        
+    @classmethod
+    def clean_attributes(
+        cls, attributes: dict
+    ) -> T_INPUT_MAP:
+        attributes = AttributeAssignmentMixin.clean_input(
+            attributes, models.Attribute.objects.all(), is_variant=False
+        )
+        return attributes
 
     @classmethod
     def clean_image_input(
@@ -842,12 +862,12 @@ class ProductCreate(ModelMutation):
         instance: models.ProductImage,
         data: dict,
         errors: dict,
-        variant_index: int,
+        image_index: int,
     ):
-        cleaned_input = ModelMutation.clean_input(
-            info, instance, data, input_cls=ProductImageCreateInput
-        )
-
+        #cleaned_input = ModelMutation.clean_input(
+        #    info, instance, data, input_cls=ProductImageCreateInput
+        #)
+        cleaned_input = data
         return cleaned_input
 
     @classmethod
@@ -857,7 +877,7 @@ class ProductCreate(ModelMutation):
         for index, image_data in enumerate(images):
             cleaned_input = None
             cleaned_input = cls.clean_image_input(
-                info, None, variant_data, errors, index
+                info, None, image_data, errors, index
             )
 
             cleaned_inputs.append(cleaned_input if cleaned_input else None)
@@ -869,6 +889,8 @@ class ProductCreate(ModelMutation):
     @classmethod
     def clean_stocks(cls, stocks_data, errors, variant_index):
         warehouse_ids = [stock["warehouse"] for stock in stocks_data]
+        quantities = [stock["quantity"] for stock in stocks_data]
+
         duplicates = get_duplicated_values(warehouse_ids)
         if duplicates:
             errors["stocks"] = ValidationError(
@@ -876,7 +898,12 @@ class ProductCreate(ModelMutation):
                 code=ProductErrorCode.DUPLICATED_INPUT_ITEM,
                 params={"warehouses": duplicates, "index": variant_index},
             )
-
+        if sum(n < 0 for n in quantities):
+            errors["stocks"] = ValidationError(
+                "Negative stock value.",
+                code=ProductErrorCode.INVALID,
+                params={"warehouses": duplicates, "index": variant_index},
+            )    
 
     @classmethod
     def clean_variant_input(
@@ -888,7 +915,7 @@ class ProductCreate(ModelMutation):
         variant_index: int,
     ):
         cleaned_input = ModelMutation.clean_input(
-            info, instance, data, input_cls=ProductVariantCreateInput
+            info, instance, data, input_cls=ProductVariantInput
         )
 
         cost_price_amount = cleaned_input.pop("cost_price", None)
@@ -901,6 +928,16 @@ class ProductCreate(ModelMutation):
                 )
             cleaned_input["cost_price_amount"] = cost_price_amount
 
+        compare_at_price_amount = cleaned_input.pop("compare_at_price", None)
+        if compare_at_price_amount is not None:
+            if compare_at_price_amount < 0:
+                errors["compareAtPrice"] = ValidationError(
+                    "Product compare at price cannot be lower than 0.",
+                    code=ProductErrorCode.INVALID.value,
+                    params={"index": variant_index},
+                )
+            cleaned_input["compare_at_price_amount"] = compare_at_price_amount
+
         price_amount = cleaned_input.pop("price", None)
         if price_amount is not None:
             if price_amount < 0:
@@ -911,8 +948,16 @@ class ProductCreate(ModelMutation):
                 )
             cleaned_input["price_amount"] = price_amount
 
-        selected_options = cleaned_input.get("attributes")
-
+        attributes = cleaned_input.get("attributes")
+        if attributes:
+            try:
+                cleaned_input["attributes"] = ProductVariantCreate.clean_attributes(
+                    attributes
+                )
+            except ValidationError as exc:
+                exc.params = {"index": variant_index}
+                errors["attributes"] = exc
+                
         stocks = cleaned_input.get("stocks")
         if stocks:
             cls.clean_stocks(stocks, errors, variant_index)
@@ -930,17 +975,24 @@ class ProductCreate(ModelMutation):
         sku_list.append(sku)
 
     @classmethod
-    def clean_variants(cls, info, variants):
+    def clean_variants(cls, info, variants, product, errors):
         cleaned_inputs = []
         sku_list = []
-        used_options_values = []
-        errors = defaultdict(list)
-
+        used_attribute_values = get_used_variants_attribute_values(product)
         for index, variant_data in enumerate(variants):
             try:
-                ProductVariantCreate.validate_duplicated_option_values(
-                    variant_data.selected_options, used_options_values
-                )
+                if variant_data.attributes is None:
+                    variant_data.attributes = []
+
+                if variant_data.id is not None:
+                    instance = cls.get_node_or_error(info, variant_data.id, models.ProductVariant)
+                    ProductVariantUpdate.validate_duplicated_attribute_values(
+                        variant_data.attributes, used_attribute_values, instance
+                    )
+                else:
+                    ProductVariantCreate.validate_duplicated_attribute_values(
+                        variant_data.attributes, used_attribute_values
+                    )
             except ValidationError as exc:
                 errors["attributes"].append(
                     ValidationError(exc.message, exc.code, params={"index": index})
@@ -956,32 +1008,26 @@ class ProductCreate(ModelMutation):
             if not variant_data.sku:
                 continue
             cls.validate_duplicated_sku(variant_data.sku, index, sku_list, errors)
-        
-        if errors:
-            raise ValidationError(errors)
-
         return cleaned_inputs
 
     @classmethod
     def clean_input(cls, info, instance, data):
         cleaned_input = super().clean_input(info, instance, data)
+        errors = defaultdict(list)
 
-        try:
-            cleaned_input = validate_slug_and_generate_if_needed(
-                instance, "name", cleaned_input
+        if cleaned_input.get("product_type") is not None:
+            product_type = (
+                instance.product_type if instance.pk else cleaned_input.get("product_type")
             )
-        except ValidationError as error:
-            error.code = ProductErrorCode.REQUIRED.value
-            raise ValidationError({"slug": error})
-
-        # FIXME  tax_rate logic should be dropped after we remove tax_rate from input
-        tax_rate = cleaned_input.pop("tax_rate", "")
-        if tax_rate:
-            info.context.plugins.assign_tax_code_to_object_meta(instance, tax_rate)
-
-        tax_code = cleaned_input.pop("tax_code", "")
-        if tax_code:
-            info.context.plugins.assign_tax_code_to_object_meta(instance, tax_code)
+            
+        if cleaned_input.get("slug") is not None or instance._state.adding:
+            try:
+                cleaned_input = validate_slug_and_generate_if_needed(
+                    instance, "name", cleaned_input
+                )
+            except ValidationError as error:
+                error.code = ProductErrorCode.REQUIRED.value
+                raise ValidationError({"slug": error})
 
         is_published = cleaned_input.get("is_published")
 
@@ -989,12 +1035,14 @@ class ProductCreate(ModelMutation):
 
         variants = cleaned_input.pop("variants", None)
         if variants:
-            cleaned_input["variants"] = cls.clean_variants(info, variants)
+            cleaned_input["variants"] = cls.clean_variants(info, variants,instance, errors)
 
         images = cleaned_input.pop("images", None)
         if images:
             cleaned_input["images"] = cls.clean_images(info, images)
 
+        if errors:
+            raise ValidationError(errors)
         return cleaned_input
 
     @classmethod
@@ -1005,7 +1053,6 @@ class ProductCreate(ModelMutation):
 
         object_id = data.get("id")
 
-
         return super().get_instance(info, **data)
 
     @classmethod
@@ -1013,17 +1060,7 @@ class ProductCreate(ModelMutation):
         if url:
             result = request.urlretrieve(url)
             return File(open(result[0], 'rb'))
-
-    @classmethod
-    def create_variant_stocks(cls, variant, cleaned_input):
-        stocks = cleaned_input.get("stocks")
-        if not stocks:
-            return
-        warehouse_ids = [stock["warehouse"] for stock in stocks]
-        warehouses = cls.get_nodes_or_error(
-            warehouse_ids, "warehouse", only_type=Warehouse
-        )
-        create_stocks(variant, stocks, warehouses)
+    
 
     @classmethod
     def add_indexes_to_errors(cls, index, error, error_dict):
@@ -1037,52 +1074,69 @@ class ProductCreate(ModelMutation):
             error_dict[key].extend(value)
 
     @classmethod
-    @transaction.atomic
-    def save(cls, info, instance, cleaned_input):
-        errors = defaultdict(list)
-
-        if instance.product_type is not None and instance.product_type.pk is None:
-            instance.product_type.save()
-
-        if instance.vendor is not None and instance.vendor.pk is None:
-            instance.vendor.save()
-
-        instance.save()
-
-        tags_input = cleaned_input.get("tags", None)
-        if tags_input is not None:
-            instance.tags.set(*tags_input, clear=True)
-
-        variants_input = cleaned_input.get("variants", None)
-        if variants_input is not None:
-            variants = cls.create_variants(info, variants_input, instance, errors)
-
-        images = cleaned_input.get("images", None)
-        if images is not None:
-            instance.images = cls.create_images(info, images, instance, errors)
-
-        if errors:
-            raise ValidationError(errors)
-
-        if variants:
-            cls.save_variants(info, variants, variants_input)
-
-
-    @classmethod
-    def create_variants(cls, info, cleaned_inputs, product, errors):
+    def create_images(cls, info, cleaned_inputs, product, errors):
         instances = []
         for index, cleaned_input in enumerate(cleaned_inputs):
             if not cleaned_input:
                 continue
             try:
-                instance = models.ProductVariant()
-                cleaned_input["product"] = product
-                instance = cls.construct_instance(instance, cleaned_input)
+                image_data = cls.get_remote_image(cleaned_input.get("url"))
+                image_data.content_type = "image/jpg"
+                image_data.name = "image.jpg"
+                validate_image_file(image_data, "image")
+
+                instance = models.ProductImage(product=product,
+                                               image=image_data, alt=cleaned_input.get("alt", ""))
+
                 cls.clean_instance(info, instance)
                 instances.append(instance)
             except ValidationError as exc:
                 cls.add_indexes_to_errors(index, exc, errors)
         return instances
+
+    @classmethod
+    @transaction.atomic
+    def update_or_create_variant_stocks(cls,info,  variant, stocks_data, warehouses):
+        stocks = []
+        for stock_data, warehouse in zip(stocks_data, warehouses):
+            stock, _ = warehouse_models.Stock.objects.get_or_create(
+                product_variant=variant, warehouse=warehouse
+            )
+            stock.quantity = stock_data["quantity"]
+            stocks.append(stock)
+        warehouse_models.Stock.objects.bulk_update(stocks, ["quantity"])
+
+    @classmethod
+    def update_or_create_variants(cls,info,  product, cleaned_inputs, errors):
+        variants = []
+        for index, cleaned_input in enumerate(cleaned_inputs):
+            if not cleaned_input:
+                continue
+            try:
+                if cleaned_input.get("id") is not None:
+                    instance = cleaned_input.get("id")
+                else:
+                    instance = models.ProductVariant()
+
+
+                cleaned_input["product"] = product
+                instance = cls.construct_instance(instance, cleaned_input)
+                cls.clean_instance(info, instance)
+                variants.append(instance)
+            except ValidationError as exc:
+                cls.add_indexes_to_errors(index, exc, errors)
+        return variants
+        
+        
+
+    @classmethod
+    @transaction.atomic
+    def save_images(cls, info, instances, cleaned_inputs):
+        assert len(instances) == len(
+            cleaned_inputs
+        ), "There should be the same number of instances and cleaned inputs."
+        for instance, cleaned_input in zip(instances, cleaned_inputs):
+            instance.save()
 
     @classmethod
     @transaction.atomic
@@ -1092,68 +1146,49 @@ class ProductCreate(ModelMutation):
         ), "There should be the same number of instances and cleaned inputs."
         for instance, cleaned_input in zip(instances, cleaned_inputs):
             instance.save()
-            cls.create_variant_stocks(instance, cleaned_input)    
+            attributes = cleaned_input.get("attributes")
+            if attributes:
+                AttributeAssignmentMixin.save(instance, attributes)
+                instance.name = generate_name_for_variant(instance)
+                instance.save(update_fields=["name"])      
 
-    @classmethod
-    def create_images(cls, info, cleaned_inputs, product, errors):
-        instances = []
-        for index, cleaned_input in enumerate(cleaned_inputs):
-            if not cleaned_input:
-                continue
-            try:
-                image_data = cls.get_remote_image(cleaned_input.get("url"))
-                image_data.content_type = "image/jpg"
-                image_data.name="image.jpg"
-
-                instance = models.ProductImage(product=product,
-                    image=image_data, alt=image_input.get("alt", ""))
-                cleaned_input["product"] = product
-
-                validate_image_file(instance, "image")
-
-                cls.clean_instance(info, instance)
-                instances.append(instance)
-            except ValidationError as exc:
-                cls.add_indexes_to_errors(index, exc, errors)
-        return instances
+            stocks = cleaned_input.get("stocks")
+            if stocks:
+                warehouse_ids = [stock["warehouse"] for stock in stocks]
+                warehouses = cls.get_nodes_or_error(
+                    warehouse_ids, "warehouse", only_type=Warehouse
+                )
+                cls.update_or_create_variant_stocks(info, instance, stocks, warehouses)
 
     @classmethod
     @transaction.atomic
-    def get_product_type(cls,
-                         instance: "ProductType",
-                         name: str,
-                         product_type_field_name: str = "product_type",
-                         ):
-        if name:
-            try:
-                return models.ProductType.objects.get(name=name)
-            except models.ProductType.DoesNotExist:
-                product_type = models.ProductType(
-                    name=name)
-                product_type.slug = generate_unique_slug(
-                    product_type, name)
-                return product_type
-        else:
-            return None
+    def save(cls, info, instance, cleaned_input):
+        errors = defaultdict(list)
+        instance.save()
 
-    @classmethod
-    @transaction.atomic
-    def get_product_vendor(cls,
-                           instance: "ProductVendor",
-                           name: str,
-                           vendor_field_name: str = "vendor",
-                           ):
-        if name:
-            try:
-                return models.ProductVendor.objects.get(name=name)
-            except models.ProductVendor.DoesNotExist:
-                vendor = models.ProductVendor(
-                    name=name)
-                vendor.slug = generate_unique_slug(
-                    vendor, name)
-                return vendor
-        else:
-            return None
+        variants_input = cleaned_input.get("variants", None)
+        if variants_input is not None:
+            variants = cls.update_or_create_variants(info, instance, variants_input, errors)
+
+        if errors:
+            raise ValidationError(errors)
+
+        cls.save_variants(info, variants, variants_input)
+
+        update_product_minimal_variant_price_task.delay(instance.pk)
+
+        images_input = cleaned_input.get("images", None)
+        images = None
+        if images_input is not None:
+            images = cls.create_images(info, images_input, instance, errors)
+
+        if errors:
+            raise ValidationError(errors)
+
+        if images:
+            cls.save_images(info, images, images_input)
+
+
 
     @classmethod
     def _save_m2m(cls, info, instance, cleaned_data):
@@ -1161,34 +1196,13 @@ class ProductCreate(ModelMutation):
         if collections is not None:
             instance.collections.set(collections)
 
+        tags = cleaned_data.get("tags", None)
+        if tags is not None:
+            instance.tags.set(*tags, clear=True)
+
     @classmethod
     def perform_mutation(cls, _root, info, **data):
-        instance = cls.get_instance(info, **data)
-        errors = defaultdict(list)
-
-        cleaned_input = cls.clean_input(info, instance, data["input"])
-
-        product_type = cleaned_input.pop("product_type", None)
-        if(product_type is not None):
-            cleaned_input["product_type"] = cls.get_product_type(instance, product_type, errors)
-
-
-
-        vendor = cleaned_input.pop("vendor", None)
-        if(vendor is not None):
-            cleaned_input["vendor"] = cls.get_product_vendor(instance, vendor, errors)
-
-        product = cls.construct_instance(instance, cleaned_input)
-
-
-
-        if errors:
-            raise ValidationError(errors)
-
-        cls.save(info, product, cleaned_input)
-        cls._save_m2m(info, product, cleaned_input)
-
-        response = cls.success_response(product)
+        response = super().perform_mutation(_root, info, **data)
         info.context.plugins.product_created(response.product)
         return response
 
@@ -1227,23 +1241,8 @@ class ProductUpdate(ProductCreate):
     @classmethod
     @transaction.atomic
     def save(cls, info, instance, cleaned_input):
-        instance.save()
-        if not instance.product_type.has_variants:
-            variant = instance.variants.first()
-            update_fields = []
-            if "track_inventory" in cleaned_input:
-                variant.track_inventory = cleaned_input["track_inventory"]
-                update_fields.append("track_inventory")
-            if "sku" in cleaned_input:
-                variant.sku = cleaned_input["sku"]
-                update_fields.append("sku")
-            if "base_price" in cleaned_input:
-                variant.price_amount = cleaned_input["base_price"]
-                update_fields.append("price_amount")
-            if update_fields:
-                variant.save(update_fields=update_fields)
-        # Recalculate the "minimal variant price"
-        update_product_minimal_variant_price_task.delay(instance.pk)
+        super().save(info, instance, cleaned_input)
+
 
 
 
@@ -1305,7 +1304,7 @@ class ProductClearPrivateMeta(ClearMetaBaseMutation):
 
 class ProductVariantCreate(ModelMutation):
     class Arguments:
-        input = ProductVariantCreateInput(
+        input = ProductVariantInput(
             required=True, description="Fields required to create a product variant."
         )
 
@@ -1318,34 +1317,26 @@ class ProductVariantCreate(ModelMutation):
 
     @classmethod
     def clean_attributes(
-        cls, attributes: dict, product_type: models.ProductType
+        cls, attributes: dict
     ) -> T_INPUT_MAP:
-        attributes_qs = product_type.variant_attributes
         attributes = AttributeAssignmentMixin.clean_input(
-            attributes, attributes_qs, is_variant=True
+            attributes, models.Attribute.objects.all(), is_variant=True
         )
         return attributes
-
-
-    @classmethod
-    def validate_duplicated_option_values(
-        cls, selected_options, used_option_values, instance=None
-    ):
-        if selected_options in used_option_values:
-            raise ValidationError(
-                "Duplicated options values for product variant.",
-                ProductErrorCode.DUPLICATED_INPUT_ITEM,
-            )
-        else:
-            used_option_values.append(selected_options)
 
     @classmethod
     def validate_duplicated_attribute_values(
         cls, attributes, used_attribute_values, instance=None
     ):
         attribute_values = defaultdict(list)
+        for used_attribute_value in used_attribute_values:
+            values = [value.lower() for value in used_attribute_value]
+            used_attribute_value = values
+
         for attribute in attributes:
-            attribute_values[attribute.id].extend(attribute.values)
+            values = [value.lower() for value in attribute.values]
+            attribute_values[attribute.id].extend(values)
+
         if attribute_values in used_attribute_values:
             raise ValidationError(
                 "Duplicated attribute values for product variant.",
@@ -1421,14 +1412,12 @@ class ProductVariantCreate(ModelMutation):
             if instance.product_id is not None:
                 # If the variant is getting updated,
                 # simply retrieve the associated product type
-                product_type = instance.product.product_type
                 used_attribute_values = get_used_variants_attribute_values(
                     instance.product
                 )
             else:
                 # If the variant is getting created, no product type is associated yet,
                 # retrieve it from the required "product" input field
-                product_type = cleaned_input["product"].product_type
                 used_attribute_values = get_used_variants_attribute_values(
                     cleaned_input["product"]
                 )
@@ -1438,7 +1427,7 @@ class ProductVariantCreate(ModelMutation):
                     attributes, used_attribute_values, instance
                 )
                 cleaned_input["attributes"] = cls.clean_attributes(
-                    attributes, product_type
+                    attributes
                 )
             except ValidationError as exc:
                 raise ValidationError({"attributes": exc})
@@ -1464,12 +1453,7 @@ class ProductVariantCreate(ModelMutation):
 
         object_id = data.get("id")
         if object_id and data.get("attributes"):
-            # Prefetches needed by AttributeAssignmentMixin and
-            # associate_attribute_values_to_instance
-            qs = cls.Meta.model.objects.prefetch_related(
-                "product__product_type__variant_attributes__values",
-                "product__product_type__attributevariant",
-            )
+
             return cls.get_node_or_error(
                 info, object_id, only_type="ProductVariant", qs=qs
             )
@@ -1523,11 +1507,17 @@ class ProductVariantUpdate(ProductVariantCreate):
     ):
         # Check if the variant is getting updated,
         # and the assigned attributes do not change
-        if instance.product_id is not None:
+        if instance.id is not None:
             assigned_attributes = get_used_attribute_values_for_variant(instance)
             input_attribute_values = defaultdict(list)
+
+            for assigned_attribute in assigned_attributes:
+                values = [value.lower() for value in assigned_attribute]
+                assigned_attribute = values
+
             for attribute in attributes:
-                input_attribute_values[attribute.id].extend(attribute.values)
+                values = [value.lower() for value in attribute.values]
+                input_attribute_values[attribute.id].extend(values)
             if input_attribute_values == assigned_attributes:
                 return
         # if assigned attributes is getting updated run duplicated attribute validation
@@ -1723,7 +1713,6 @@ class ProductTypeDelete(ModelDeleteMutation):
         error_type_class = ProductError
         error_type_field = "product_errors"
 
-
 class ProductTypeUpdateMeta(UpdateMetaBaseMutation):
     class Meta:
         model = models.ProductType
@@ -1760,6 +1749,69 @@ class ProductTypeClearPrivateMeta(ClearMetaBaseMutation):
         model = models.ProductType
         permissions = (ProductPermissions.MANAGE_PRODUCTS,)
         public = False
+        error_type_class = ProductError
+        error_type_field = "product_errors"
+
+
+class VendorInput(graphene.InputObjectType):
+    name = graphene.String(description="Name of the product type.")
+    slug = graphene.String(description="Product type slug.")
+
+
+class VendorCreate(ModelMutation):
+    class Arguments:
+        input = VendorInput(
+            required=True, description="Fields required to create a vendor."
+        )
+
+    class Meta:
+        description = "Creates a new vendor."
+        model = models.Vendor
+        permissions = (ProductPermissions.MANAGE_PRODUCTS,)
+        error_type_class = ProductError
+        error_type_field = "product_errors"
+
+    @classmethod
+    def clean_input(cls, info, instance, data):
+        cleaned_input = super().clean_input(info, instance, data)
+
+        try:
+            cleaned_input = validate_slug_and_generate_if_needed(
+                instance, "name", cleaned_input
+            )
+        except ValidationError as error:
+            error.code = ProductErrorCode.REQUIRED.value
+            raise ValidationError({"slug": error})
+
+        return cleaned_input
+
+class VendorUpdate(VendorCreate):
+    class Arguments:
+        id = graphene.ID(required=True, description="ID of a vendor to update.")
+        input = VendorInput(
+            required=True, description="Fields required to update a vendor."
+        )
+
+    class Meta:
+        description = "Updates an existing vendor."
+        model = models.Vendor
+        permissions = (ProductPermissions.MANAGE_PRODUCTS,)
+        error_type_class = ProductError
+        error_type_field = "product_errors"
+
+    @classmethod
+    def save(cls, info, instance, cleaned_input):
+        super().save(info, instance, cleaned_input)
+
+
+class VendorDelete(ModelDeleteMutation):
+    class Arguments:
+        id = graphene.ID(required=True, description="ID of a vendor to delete.")
+
+    class Meta:
+        description = "Deletes a vendor."
+        model = models.Vendor
+        permissions = (ProductPermissions.MANAGE_PRODUCTS,)
         error_type_class = ProductError
         error_type_field = "product_errors"
 

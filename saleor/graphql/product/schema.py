@@ -22,6 +22,7 @@ from .bulk_mutations.products import (
     ProductBulkPublish,
     ProductImageBulkDelete,
     ProductTypeBulkDelete,
+    VendorBulkDelete,
     ProductVariantBulkCreate,
     ProductVariantBulkDelete,
     ProductVariantStocksCreate,
@@ -33,6 +34,7 @@ from .filters import (
     AttributeFilterInput,
     CategoryFilterInput,
     CollectionFilterInput,
+    VendorFilterInput,
     ProductFilterInput,
     ProductTypeFilterInput,
 )
@@ -91,6 +93,9 @@ from .mutations.products import (
     ProductTypeUpdate,
     ProductTypeUpdateMeta,
     ProductTypeUpdatePrivateMeta,
+    VendorCreate,
+    VendorDelete,
+    VendorUpdate,
     ProductUpdate,
     ProductUpdateMeta,
     ProductUpdatePrivateMeta,
@@ -113,6 +118,7 @@ from .resolvers import (
     resolve_digital_contents,
     resolve_product_by_slug,
     resolve_product_types,
+    resolve_vendors,
     resolve_product_variants,
     resolve_products,
     resolve_report_product_sales,
@@ -123,6 +129,7 @@ from .sorters import (
     CollectionSortingInput,
     ProductOrder,
     ProductTypeSortingInput,
+    VendorSortingInput,
 )
 from .types import (
     Attribute,
@@ -131,6 +138,7 @@ from .types import (
     DigitalContent,
     Product,
     ProductType,
+    Vendor,
     ProductVariant,
 )
 
@@ -221,6 +229,14 @@ class ProductQueries(graphene.ObjectType):
         sort_by=ProductTypeSortingInput(description="Sort product types."),
         description="List of the shop's product types.",
     )
+    vendors = FilterInputConnectionField(
+        Vendor,
+        filter=VendorFilterInput(
+            description="Filtering options for product vendors."
+        ),
+        sort_by=VendorSortingInput(description="Sort product types."),
+        description="List of the shop's product types.",
+    )
     product_variant = graphene.Field(
         ProductVariant,
         id=graphene.Argument(
@@ -292,6 +308,9 @@ class ProductQueries(graphene.ObjectType):
 
     def resolve_product_types(self, info, **kwargs):
         return resolve_product_types(info, **kwargs)
+
+    def resolve_vendors(self, info, **kwargs):
+        return resolve_vendors(info, **kwargs)
 
     def resolve_product_variant(self, info, id):
         return graphene.Node.get_node_from_global_id(info, id, ProductVariant)
@@ -475,6 +494,11 @@ class ProductMutations(graphene.ObjectType):
             "removed after 2020-07-31."
         )
     )
+
+    vendor_create = VendorCreate.Field()
+    vendor_delete = VendorDelete.Field()
+    vendor_bulk_delete = VendorBulkDelete.Field()
+    vendor_update = VendorUpdate.Field()
 
     digital_content_create = DigitalContentCreate.Field()
     digital_content_delete = DigitalContentDelete.Field()

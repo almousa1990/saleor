@@ -7,9 +7,7 @@ from ....product.models import (
     AssignedProductAttribute,
     AssignedVariantAttribute,
     Attribute,
-    AttributeProduct,
     AttributeValue,
-    AttributeVariant,
 )
 from ...core.dataloaders import DataLoader
 from .products import ProductByIdLoader, ProductVariantByIdLoader
@@ -34,7 +32,6 @@ class AttributesByAttributeId(DataLoader):
     def batch_load(self, keys):
         attributes = Attribute.objects.in_bulk(keys)
         return [attributes.get(key) for key in keys]
-
 
 class AttributeProductsByProductTypeIdLoader(DataLoader):
     context_key = "attributeproducts_by_producttype"
@@ -78,16 +75,16 @@ class AssignedProductAttributesByProductIdLoader(DataLoader):
     def batch_load(self, keys):
         user = self.user
         if user.is_active and user.has_perm(ProductPermissions.MANAGE_PRODUCTS):
-            qs = AssignedProductAttribute.objects.all()
+            qs = AssignedVariantAttribute.objects.filter()
         else:
-            qs = AssignedProductAttribute.objects.filter(
-                assignment__attribute__visible_in_storefront=True
+            qs = AssignedVariantAttribute.objects.filter(
+                attribute__visible_in_storefront=True
             )
-        assigned_product_attributes = qs.filter(product_id__in=keys)
+        assigned_product_attributes = qs.filter(variant__product_id__in=keys)
         product_to_assignedproductattributes = defaultdict(list)
         for assigned_product_attribute in assigned_product_attributes:
             product_to_assignedproductattributes[
-                assigned_product_attribute.product_id
+                assigned_product_attribute.variant.product_id
             ].append(assigned_product_attribute)
         return [product_to_assignedproductattributes[product_id] for product_id in keys]
 
@@ -101,10 +98,10 @@ class AssignedVariantAttributesByProductVariantId(DataLoader):
             qs = AssignedVariantAttribute.objects.all()
         else:
             qs = AssignedVariantAttribute.objects.filter(
-                assignment__attribute__visible_in_storefront=True
+                attribute__visible_in_storefront=True
             )
         assigned_variant_attributes = qs.filter(variant_id__in=keys).select_related(
-            "assignment__attribute"
+            "attribute"
         )
         variant_attributes = defaultdict(list)
         for assigned_variant_attribute in assigned_variant_attributes:
@@ -185,50 +182,108 @@ class SelectedAttributesByProductIdLoader(DataLoader):
 
     def batch_load(self, keys):
         def with_products_and_assigned_attributed(result):
-            products, product_attributes = result
+            product_attributes = result
             assigned_product_attribute_ids = [
                 a.id for attrs in product_attributes for a in attrs
             ]
-            product_type_ids = list({p.product_type_id for p in products})
+            attribute_ids = [
+                a.attribute_id for attrs in product_attributes for a in attrs
+            ]
             product_attributes = dict(zip(keys, product_attributes))
 
-            def with_attributeproducts_and_values(result):
-                attribute_products, attribute_values = result
-                attribute_ids = list(
-                    {ap.attribute_id for aps in attribute_products for ap in aps}
-                )
-                attribute_products = dict(zip(product_type_ids, attribute_products))
+            def with_attribute_values(result):
                 attribute_values = dict(
-                    zip(assigned_product_attribute_ids, attribute_values)
+                    zip(assigned_product_attribute_ids, result)
                 )
 
                 def with_attributes(attributes):
                     id_to_attribute = dict(zip(attribute_ids, attributes))
                     selected_attributes_map = defaultdict(list)
-                    for key, product in zip(keys, products):
-                        assigned_producttype_attributes = attribute_products[
-                            product.product_type_id
-                        ]
+                    for key in keys:
                         assigned_product_attributes = product_attributes[key]
                         for (
-                            assigned_producttype_attribute
-                        ) in assigned_producttype_attributes:
-                            product_assignment = next(
-                                (
-                                    apa
-                                    for apa in assigned_product_attributes
-                                    if apa.assignment_id
-                                    == assigned_producttype_attribute.id
-                                ),
-                                None,
-                            )
+                            assigned_product_attribute
+                        ) in assigned_product_attributes:
+
                             attribute = id_to_attribute[
-                                assigned_producttype_attribute.attribute_id
+                                assigned_product_attribute.attribute_id
                             ]
-                            if product_assignment:
-                                values = attribute_values[product_assignment.id]
+
+                            values = attribute_values[assigned_product_attribute.id]
+                            
+                            existing_attribute = next((selected_attribute for selected_attribute in selected_attributes_map[key] if selected_attribute["attribute"].pk == attribute.pk), None)
+                            if existing_attribute is None:
+                                selected_attributes_map[key].append(
+                                    {"values": values, "attribute": attribute}
+                                )
                             else:
-                                values = []
+                                existing_value = next((selected_attribute_value for selected_attribute_value in existing_attribute["values"] if any(selected_attribute_value.pk == new_value.pk for new_value in values)), None)
+                                if existing_value is None:
+                                    new_values = values+existing_attribute["values"]
+                                    existing_attribute.update({"values": new_values})
+
+                    return [selected_attributes_map[key] for key in keys]
+
+                return (
+                    AttributesByAttributeId(self.context)
+                    .load_many(attribute_ids)
+                    .then(with_attributes)
+                )
+            if assigned_product_attribute_ids:
+                attribute_values = AttributeValuesByAssignedVariantAttributeIdLoader(
+                    self.context
+                ).load_many(assigned_product_attribute_ids)
+
+                return Promise.all(attribute_values).then(
+                    with_attribute_values
+                )
+            else:
+                return with_attribute_values([])
+
+
+        assigned_attributes = AssignedProductAttributesByProductIdLoader(
+            self.context
+        ).load_many(keys)
+
+        return Promise.all(assigned_attributes).then(
+            with_products_and_assigned_attributed
+        )
+
+class SelectedAttributesByProductVariantIdLoader(DataLoader):
+    context_key = "selectedattributes_by_productvariant"
+
+    def batch_load(self, keys):
+        def with_variants_and_assigned_attributed(results):
+            variant_attributes = results
+            attribute_ids = [
+                a.attribute_id for attrs in variant_attributes for a in attrs
+            ]
+            assigned_variant_attribute_ids = [
+                a.id for attrs in variant_attributes for a in attrs
+            ]
+
+            variant_attributes = dict(zip(keys, variant_attributes))
+
+            def with_attribute_values(results):
+                attribute_values = dict(
+                    zip(assigned_variant_attribute_ids, results)
+                )
+                def with_attributes(attributes):
+                    id_to_attribute = dict(zip(attribute_ids, attributes))
+                    selected_attributes_map = defaultdict(list)
+                    for key in keys:
+
+                        assigned_variant_attributes = variant_attributes[key]
+                        for (
+                            assigned_variant_attribute
+                        ) in assigned_variant_attributes:
+
+                            attribute = id_to_attribute[
+                                assigned_variant_attribute.attribute_id
+                            ]
+                            
+                            values = attribute_values[assigned_variant_attribute.id]
+
                             selected_attributes_map[key].append(
                                 {"values": values, "attribute": attribute}
                             )
@@ -240,111 +295,23 @@ class SelectedAttributesByProductIdLoader(DataLoader):
                     .then(with_attributes)
                 )
 
-            attribute_products = AttributeProductsByProductTypeIdLoader(
-                self.context
-            ).load_many(product_type_ids)
-            attribute_values = AttributeValuesByAssignedProductAttributeIdLoader(
-                self.context
-            ).load_many(assigned_product_attribute_ids)
-            return Promise.all([attribute_products, attribute_values]).then(
-                with_attributeproducts_and_values
-            )
+            
+            if assigned_variant_attribute_ids:
+                attribute_values = AttributeValuesByAssignedVariantAttributeIdLoader(
+                    self.context
+                ).load_many(assigned_variant_attribute_ids)
 
-        products = ProductByIdLoader(self.context).load_many(keys)
-        assigned_attributes = AssignedProductAttributesByProductIdLoader(
-            self.context
-        ).load_many(keys)
-
-        return Promise.all([products, assigned_attributes]).then(
-            with_products_and_assigned_attributed
-        )
-
-
-class SelectedAttributesByProductVariantIdLoader(DataLoader):
-    context_key = "selectedattributes_by_productvariant"
-
-    def batch_load(self, keys):
-        def with_variants_and_assigned_attributed(results):
-            product_variants, variant_attributes = results
-            product_ids = list({v.product_id for v in product_variants})
-            assigned_variant_attribute_ids = [
-                a.id for attrs in variant_attributes for a in attrs
-            ]
-            variant_attributes = dict(zip(keys, variant_attributes))
-
-            def with_products_and_attribute_values(results):
-                products, attribute_values = results
-                product_type_ids = list({p.product_type_id for p in products})
-                products = dict(zip(product_ids, products))
-                attribute_values = dict(
-                    zip(assigned_variant_attribute_ids, attribute_values)
+                return Promise.all(attribute_values).then(
+                    with_attribute_values
                 )
+            else:
+                return with_attribute_values([])
 
-                def with_attribute_products(attribute_products):
-                    attribute_ids = list(
-                        {ap.attribute_id for aps in attribute_products for ap in aps}
-                    )
-                    attribute_products = dict(zip(product_type_ids, attribute_products))
-
-                    def with_attributes(attributes):
-                        id_to_attribute = dict(zip(attribute_ids, attributes))
-                        selected_attributes_map = defaultdict(list)
-                        for key, product_variant in zip(keys, product_variants):
-                            product = products[product_variant.product_id]
-                            assigned_producttype_attributes = attribute_products[
-                                product.product_type_id
-                            ]
-                            assigned_variant_attributes = variant_attributes[key]
-                            for (
-                                assigned_producttype_attribute
-                            ) in assigned_producttype_attributes:
-                                variant_assignment = next(
-                                    (
-                                        apa
-                                        for apa in assigned_variant_attributes
-                                        if apa.assignment_id
-                                        == assigned_producttype_attribute.id
-                                    ),
-                                    None,
-                                )
-                                attribute = id_to_attribute[
-                                    assigned_producttype_attribute.attribute_id
-                                ]
-                                if variant_assignment:
-                                    values = attribute_values[variant_assignment.id]
-                                else:
-                                    values = []
-                                selected_attributes_map[key].append(
-                                    {"values": values, "attribute": attribute}
-                                )
-                        return [selected_attributes_map[key] for key in keys]
-
-                    return (
-                        AttributesByAttributeId(self.context)
-                        .load_many(attribute_ids)
-                        .then(with_attributes)
-                    )
-
-                return (
-                    AttributeVariantsByProductTypeIdLoader(self.context)
-                    .load_many(product_type_ids)
-                    .then(with_attribute_products)
-                )
-
-            products = ProductByIdLoader(self.context).load_many(product_ids)
-            attribute_values = AttributeValuesByAssignedVariantAttributeIdLoader(
-                self.context
-            ).load_many(assigned_variant_attribute_ids)
-
-            return Promise.all([products, attribute_values]).then(
-                with_products_and_attribute_values
-            )
-
-        product_variants = ProductVariantByIdLoader(self.context).load_many(keys)
         assigned_attributes = AssignedVariantAttributesByProductVariantId(
             self.context
         ).load_many(keys)
 
-        return Promise.all([product_variants, assigned_attributes]).then(
+        return Promise.all(assigned_attributes).then(
             with_variants_and_assigned_attributed
         )
+

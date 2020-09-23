@@ -153,7 +153,9 @@ class PermissionGroupError(Error):
 
 class ProductError(Error):
     code = ProductErrorCode(description="The error code.", required=True)
-
+    index = graphene.Int(
+        description="Index of an input list item that caused the error."
+    )
 
 class ProductAttributeError(ProductError):
     attributes = graphene.List(

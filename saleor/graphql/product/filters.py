@@ -12,6 +12,7 @@ from ...product.models import (
     Attribute,
     Category,
     Collection,
+    Vendor,
     Product,
     ProductType,
     ProductVariant,
@@ -370,6 +371,16 @@ class ProductTypeFilter(django_filters.FilterSet):
         model = ProductType
         fields = ["search", "configurable", "product_type"]
 
+class VendorFilter(django_filters.FilterSet):
+    search = django_filters.CharFilter(
+        method=filter_fields_containing_value("name", "slug")
+    )
+
+    ids = GlobalIDMultipleChoiceFilter(field_name="id")
+
+    class Meta:
+        model = Vendor
+        fields = ["search"]
 
 class AttributeFilter(django_filters.FilterSet):
     # Search by attribute name and slug
@@ -412,6 +423,9 @@ class ProductTypeFilterInput(FilterInputObjectType):
     class Meta:
         filterset_class = ProductTypeFilter
 
+class VendorFilterInput(FilterInputObjectType):
+    class Meta:
+        filterset_class = VendorFilter
 
 class AttributeFilterInput(FilterInputObjectType):
     class Meta:

@@ -37,18 +37,18 @@ def _associate_attribute_to_instance(
     if isinstance(instance, Product):
         attribute_rel: Union[
             "AttributeProduct", "AttributeVariant"
-        ] = instance.product_type.attributeproduct.get(attribute_id=attribute_pk)
+        ] = Attribute.objects.get(id=attribute_pk)
 
         assignment, _ = AssignedProductAttribute.objects.get_or_create(
-            product=instance, assignment=attribute_rel
+            product=instance, attribute=attribute_rel
         )
     elif isinstance(instance, ProductVariant):
-        attribute_rel = instance.product.product_type.attributevariant.get(
-            attribute_id=attribute_pk
+        attribute_rel = Attribute.objects.get(
+            id=attribute_pk
         )
 
         assignment, _ = AssignedVariantAttribute.objects.get_or_create(
-            variant=instance, assignment=attribute_rel
+            variant=instance, attribute=attribute_rel
         )
     else:
         raise AssertionError(f"{instance.__class__.__name__} is unsupported")

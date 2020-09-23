@@ -6,8 +6,8 @@ from ..core.mutations import BaseMutation
 from ..core.types.common import UploadError
 from ...upload import models
 from ..upload.enums import StagedUploadHttpMethodType, StagedUploadTargetGenerateUploadResource
-from ..upload.types import StagedUploadsCreatePayload, StagedUploadTarget
-from ..core.utils import get_duplicates_ids, validate_image_file
+from ..upload.types import StagedUploadsCreatePayload, StagedUploadTarget, StagedMediaUploadTarget
+from ..core.utils import validate_image_file
 from ..core.types import Upload
 
 
@@ -24,7 +24,7 @@ class StagedUploadInput(graphene.InputObjectType):
 
 
 class StagedUploadsCreate(BaseMutation):
-    staged_targets = graphene.List(StagedUploadTarget)
+    staged_targets = graphene.List(StagedMediaUploadTarget)
 
     class Arguments:
         input = graphene.List(
@@ -47,6 +47,6 @@ class StagedUploadsCreate(BaseMutation):
             validate_image_file(content_data, "image")
             staged_file = models.StagedTarget(content_file=content_data)
             staged_file.save()
-            results.append(StagedUploadTarget(resource_url=info.context.build_absolute_uri(
+            results.append(StagedMediaUploadTarget(id=staged_file.pk, resource_url=info.context.build_absolute_uri(
                 staged_file.content_file.url), url=info.context.build_absolute_uri(staged_file.content_file.url)))
         return StagedUploadsCreate(staged_targets=results)

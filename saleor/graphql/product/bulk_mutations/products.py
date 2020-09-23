@@ -508,6 +508,20 @@ class ProductTypeBulkDelete(ModelBulkDeleteMutation):
         error_type_class = ProductError
         error_type_field = "product_errors"
 
+class VendorBulkDelete(ModelBulkDeleteMutation):
+    class Arguments:
+        ids = graphene.List(
+            graphene.ID,
+            required=True,
+            description="List of vendor IDs to delete.",
+        )
+
+    class Meta:
+        description = "Deletes vendors."
+        model = models.Vendor
+        permissions = (ProductPermissions.MANAGE_PRODUCTS,)
+        error_type_class = ProductError
+        error_type_field = "product_errors"
 
 class ProductImageBulkDelete(ModelBulkDeleteMutation):
     class Arguments:

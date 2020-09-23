@@ -32,6 +32,7 @@ class ImageUploadParameter(graphene.ObjectType):
 
 
 class StagedMediaUploadTarget(graphene.ObjectType):
+    id = graphene.ID(description="ID.")
     parameters = graphene.List(StagedUploadParameter, description="Parameters of the media to be uploaded")
     resource_url = graphene.String(description="The url to be passed as the original_source for the product create media mutation input.")
     url = graphene.String(description="Media URL.")

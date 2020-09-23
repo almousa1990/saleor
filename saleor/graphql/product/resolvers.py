@@ -68,6 +68,10 @@ def resolve_product_types(info, **_kwargs):
     return models.ProductType.objects.all()
 
 
+def resolve_vendors(info, **_kwargs):
+    return models.Vendor.objects.all()
+
+
 def resolve_product_variants(info, ids=None):
     user = info.context.user
     visible_products = models.Product.objects.visible_to_user(user).values_list(

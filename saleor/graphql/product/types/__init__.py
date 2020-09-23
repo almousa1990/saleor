@@ -7,5 +7,6 @@ from .products import (
     Product,
     ProductImage,
     ProductType,
+    Vendor,
     ProductVariant,
 )

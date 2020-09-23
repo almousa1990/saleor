@@ -87,8 +87,8 @@ class CategoryTranslation(SeoModelTranslation):
             self.category_id,
         )
 
-class ProductVendor(ModelWithMetadata):
-    name = models.CharField(max_length=250)
+class Vendor(ModelWithMetadata):
+    name = models.CharField(max_length=250, unique=True)
     slug = models.SlugField(max_length=255, unique=True, allow_unicode=True)
 
     class Meta:
@@ -108,14 +108,9 @@ class ProductVendor(ModelWithMetadata):
         )
         
 class ProductType(ModelWithMetadata):
-    name = models.CharField(max_length=250)
+    name = models.CharField(max_length=250, unique=True)
     slug = models.SlugField(max_length=255, unique=True, allow_unicode=True)
-    has_variants = models.BooleanField(default=True)
-    is_shipping_required = models.BooleanField(default=True)
-    is_digital = models.BooleanField(default=False)
-    weight = MeasurementField(
-        measurement=Weight, unit_choices=WeightUnits.CHOICES, default=zero_weight
-    )
+
 
     class Meta:
         ordering = ("slug",)
@@ -174,7 +169,7 @@ class ProductsQueryset(PublishedQuerySet):
         # Retrieve all the products' attribute data IDs (assignments) and
         # product types that have the given attribute associated to them
         associated_values = tuple(
-            AttributeProduct.objects.filter(attribute_id=attribute_pk).values_list(
+            Attribute.objects.filter(attribute_id=attribute_pk).values_list(
                 "pk", "product_type_id"
             )
         )
@@ -255,13 +250,12 @@ class Product(SeoModel, ModelWithMetadata, PublishableModel):
         null=True,
     )
     vendor = models.ForeignKey(
-        ProductVendor,
+        Vendor,
         models.SET_NULL,
         blank=True,
         null=True,
     )
     tags = TaggableManager()
-    options = JSONField(blank=True, default=dict)
     name = models.CharField(max_length=250)
     slug = models.SlugField(max_length=255, unique=True, allow_unicode=True)
     description = models.TextField(blank=True)
@@ -284,10 +278,7 @@ class Product(SeoModel, ModelWithMetadata, PublishableModel):
         amount_field="minimal_variant_price_amount", currency_field="currency"
     )
     updated_at = models.DateTimeField(auto_now=True, null=True)
-    charge_taxes = models.BooleanField(default=True)
-    weight = MeasurementField(
-        measurement=Weight, unit_choices=WeightUnits.CHOICES, blank=True, null=True
-    )
+
     objects = ProductsQueryset.as_manager()
     translated = TranslationProxy()
 
@@ -393,7 +384,6 @@ class ProductVariantQueryset(models.QuerySet):
 class ProductVariant(ModelWithMetadata):
     sku = models.CharField(max_length=255, unique=True)
     barcode = models.CharField(max_length=255, blank=True, null=True)
-    selected_options = JSONField(blank=True, default=dict)
     name = models.CharField(max_length=255, blank=True)
     currency = models.CharField(
         max_length=settings.DEFAULT_CURRENCY_CODE_LENGTH,
@@ -429,11 +419,12 @@ class ProductVariant(ModelWithMetadata):
     cost_price = MoneyField(amount_field="cost_price_amount", currency_field="currency")
     
 
+    charge_taxes = models.BooleanField(default=True)
     weight = MeasurementField(
         measurement=Weight, unit_choices=WeightUnits.CHOICES, blank=True, null=True
     )
 
-    require_shipping = models.BooleanField(default=False)
+    requires_shipping = models.BooleanField(default=False)
 
     objects = ProductVariantQueryset.as_manager()
     translated = TranslationProxy()
@@ -461,10 +452,10 @@ class ProductVariant(ModelWithMetadata):
         return self.weight or self.product.weight
 
     def is_shipping_required(self) -> bool:
-        return self.require_shipping
+        return self.requires_shipping
 
     def is_digital(self) -> bool:
-        is_digital = self.product.product_type.is_digital
+        is_digital = self.product.is_digital
         return not self.is_shipping_required() and is_digital
 
     def display_product(self, translated: bool = False) -> str:
@@ -568,7 +559,7 @@ class BaseAttributeQuerySet(models.QuerySet):
 
 
 class BaseAssignedAttribute(models.Model):
-    assignment = None
+    attribute = None
     values = models.ManyToManyField("AttributeValue")
 
     class Meta:
@@ -576,11 +567,11 @@ class BaseAssignedAttribute(models.Model):
 
     @property
     def attribute(self):
-        return self.assignment.attribute
+        return self.attribute
 
     @property
     def attribute_pk(self):
-        return self.assignment.attribute_id
+        return self.attribute_id
 
 
 class AssignedProductAttribute(BaseAssignedAttribute):
@@ -589,12 +580,12 @@ class AssignedProductAttribute(BaseAssignedAttribute):
     product = models.ForeignKey(
         Product, related_name="attributes", on_delete=models.CASCADE
     )
-    assignment = models.ForeignKey(
-        "AttributeProduct", on_delete=models.CASCADE, related_name="productassignments"
+    attribute = models.ForeignKey(
+        "attribute", on_delete=models.CASCADE, related_name="productassignments"
     )
 
     class Meta:
-        unique_together = (("product", "assignment"),)
+        unique_together = (("product", "attribute"),)
 
 
 class AssignedVariantAttribute(BaseAssignedAttribute):
@@ -603,12 +594,12 @@ class AssignedVariantAttribute(BaseAssignedAttribute):
     variant = models.ForeignKey(
         ProductVariant, related_name="attributes", on_delete=models.CASCADE
     )
-    assignment = models.ForeignKey(
-        "AttributeVariant", on_delete=models.CASCADE, related_name="variantassignments"
+    attribute = models.ForeignKey(
+        "Attribute", on_delete=models.CASCADE, related_name="variantattributes"
     )
 
     class Meta:
-        unique_together = (("variant", "assignment"),)
+        unique_together = (("variant", "attribute"),)
 
 
 class AssociatedAttributeQuerySet(BaseAttributeQuerySet):
@@ -616,69 +607,7 @@ class AssociatedAttributeQuerySet(BaseAttributeQuerySet):
         return self.filter(attribute__visible_in_storefront=True)
 
 
-class AttributeProduct(SortableModel):
-    attribute = models.ForeignKey(
-        "Attribute", related_name="attributeproduct", on_delete=models.CASCADE
-    )
-    product_type = models.ForeignKey(
-        ProductType, related_name="attributeproduct", on_delete=models.CASCADE
-    )
-    assigned_products = models.ManyToManyField(
-        Product,
-        blank=True,
-        through=AssignedProductAttribute,
-        through_fields=("assignment", "product"),
-        related_name="attributesrelated",
-    )
-
-    objects = AssociatedAttributeQuerySet.as_manager()
-
-    class Meta:
-        unique_together = (("attribute", "product_type"),)
-        ordering = ("sort_order", "pk")
-
-    def get_ordering_queryset(self):
-        return self.product_type.attributeproduct.all()
-
-
-class AttributeVariant(SortableModel):
-    attribute = models.ForeignKey(
-        "Attribute", related_name="attributevariant", on_delete=models.CASCADE
-    )
-    product_type = models.ForeignKey(
-        ProductType, related_name="attributevariant", on_delete=models.CASCADE
-    )
-    assigned_variants = models.ManyToManyField(
-        ProductVariant,
-        blank=True,
-        through=AssignedVariantAttribute,
-        through_fields=("assignment", "variant"),
-        related_name="attributesrelated",
-    )
-
-    objects = AssociatedAttributeQuerySet.as_manager()
-
-    class Meta:
-        unique_together = (("attribute", "product_type"),)
-        ordering = ("sort_order", "pk")
-
-    def get_ordering_queryset(self):
-        return self.product_type.attributevariant.all()
-
-
 class AttributeQuerySet(BaseAttributeQuerySet):
-    def get_unassigned_attributes(self, product_type_pk: int):
-        return self.exclude(
-            Q(attributeproduct__product_type_id=product_type_pk)
-            | Q(attributevariant__product_type_id=product_type_pk)
-        )
-
-    def get_assigned_attributes(self, product_type_pk: int):
-        return self.filter(
-            Q(attributeproduct__product_type_id=product_type_pk)
-            | Q(attributevariant__product_type_id=product_type_pk)
-        )
-
     def get_public_attributes(self):
         return self.filter(visible_in_storefront=True)
 
@@ -694,12 +623,6 @@ class AttributeQuerySet(BaseAttributeQuerySet):
 
         return self.order_by(sort_method, id_sort)
 
-    def product_attributes_sorted(self, asc=True):
-        return self._get_sorted_m2m_field("attributeproduct", asc)
-
-    def variant_attributes_sorted(self, asc=True):
-        return self._get_sorted_m2m_field("attributevariant", asc)
-
 
 class Attribute(ModelWithMetadata):
     slug = models.SlugField(max_length=250, unique=True, allow_unicode=True)
@@ -711,20 +634,6 @@ class Attribute(ModelWithMetadata):
         default=AttributeInputType.DROPDOWN,
     )
 
-    product_types = models.ManyToManyField(
-        ProductType,
-        blank=True,
-        related_name="product_attributes",
-        through=AttributeProduct,
-        through_fields=("attribute", "product_type"),
-    )
-    product_variant_types = models.ManyToManyField(
-        ProductType,
-        blank=True,
-        related_name="variant_attributes",
-        through=AttributeVariant,
-        through_fields=("attribute", "product_type"),
-    )
 
     value_required = models.BooleanField(default=False, blank=True)
     is_variant_only = models.BooleanField(default=False, blank=True)
