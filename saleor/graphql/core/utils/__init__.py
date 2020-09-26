@@ -78,7 +78,7 @@ def validate_slug_and_generate_if_needed(
     # update mutation - just check if slug value is not empty
     # _state.adding is True only when it's new not saved instance.
     if not instance._state.adding:  # type: ignore
-        validate_slug_value(cleaned_input)
+        validate_slug_value(instance, cleaned_input)
         return cleaned_input
 
     # create mutation - generate slug if slug value is empty
@@ -89,14 +89,18 @@ def validate_slug_and_generate_if_needed(
     return cleaned_input
 
 
-def validate_slug_value(cleaned_input, slug_field_name: str = "slug"):
+def validate_slug_value(
+        instance: Type["Model"], cleaned_input, slug_field_name: str = "slug"):
     if slug_field_name in cleaned_input:
         slug = cleaned_input[slug_field_name]
         if not slug:
             raise ValidationError(
                 f"{slug_field_name.capitalize()} value cannot be blank."
             )
-
+            
+        slugified = generate_unique_slug(instance, slug)
+        if slugified != slug:
+            cleaned_input[slug_field_name] = slugified
 
 def get_duplicates_ids(first_list, second_list):
     """Return items that appear on both provided lists."""

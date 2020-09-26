@@ -2308,6 +2308,7 @@ type Margin {
 type Menu implements Node {
   id: ID!
   name: String!
+  slug: String!
   items: [MenuItem]
 }
 
@@ -2335,7 +2336,8 @@ type MenuCreate {
 }
 
 input MenuCreateInput {
-  name: String!
+  name: String
+  slug: String
   items: [MenuItemInput]
 }
 
@@ -2369,6 +2371,7 @@ input MenuFilterInput {
 
 input MenuInput {
   name: String
+  slug: String
 }
 
 type MenuItem implements Node {
@@ -2376,9 +2379,9 @@ type MenuItem implements Node {
   name: String!
   menu: Menu!
   parent: MenuItem
-  category: Category
   collection: Collection
   page: Page
+  product: Product
   level: Int!
   children: [MenuItem]
   url: String
@@ -2411,7 +2414,7 @@ type MenuItemCreate {
 input MenuItemCreateInput {
   name: String!
   url: String
-  category: ID
+  product: ID
   collection: ID
   page: ID
   menu: ID!
@@ -2431,7 +2434,7 @@ input MenuItemFilterInput {
 input MenuItemInput {
   name: String
   url: String
-  category: ID
+  product: ID
   collection: ID
   page: ID
 }

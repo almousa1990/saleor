@@ -4,7 +4,7 @@ from graphene import relay
 from ...menu import models
 from ..core.connection import CountableDjangoObjectType
 from ..page.dataloaders import PageByIdLoader
-from ..product.dataloaders import CategoryByIdLoader, CollectionByIdLoader
+from ..product.dataloaders import ProductByIdLoader, CollectionByIdLoader
 from ..translations.fields import TranslationField
 from ..translations.types import MenuItemTranslation
 from .dataloaders import (
@@ -24,7 +24,7 @@ class Menu(CountableDjangoObjectType):
             "through the store."
         )
         interfaces = [relay.Node]
-        only_fields = ["id", "name"]
+        only_fields = ["id", "name", "slug"]
         model = models.Menu
 
     @staticmethod
@@ -44,7 +44,7 @@ class MenuItem(CountableDjangoObjectType):
         )
         interfaces = [relay.Node]
         only_fields = [
-            "category",
+            "product",
             "collection",
             "id",
             "level",
@@ -56,9 +56,9 @@ class MenuItem(CountableDjangoObjectType):
         model = models.MenuItem
 
     @staticmethod
-    def resolve_category(root: models.MenuItem, info, **_kwargs):
-        if root.category_id:
-            return CategoryByIdLoader(info.context).load(root.category_id)
+    def resolve_product(root: models.MenuItem, info, **_kwargs):
+        if root.product_id:
+            return ProductByIdLoader(info.context).load(root.product_id)
         return None
 
     @staticmethod

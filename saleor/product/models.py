@@ -421,7 +421,7 @@ class ProductVariant(ModelWithMetadata):
 
     charge_taxes = models.BooleanField(default=True)
     weight = MeasurementField(
-        measurement=Weight, unit_choices=WeightUnits.CHOICES, blank=True, null=True
+        measurement=Weight, unit_choices=WeightUnits.CHOICES, default=zero_weight
     )
 
     requires_shipping = models.BooleanField(default=False)
@@ -449,7 +449,7 @@ class ProductVariant(ModelWithMetadata):
         )
 
     def get_weight(self):
-        return self.weight or self.product.weight
+        return self.weight
 
     def is_shipping_required(self) -> bool:
         return self.requires_shipping

@@ -6,11 +6,12 @@ from ..core.models import SortableModel
 from ..core.permissions import MenuPermissions
 from ..core.utils.translations import TranslationProxy
 from ..page.models import Page
-from ..product.models import Category, Collection
+from ..product.models import Product, Collection
 
 
 class Menu(models.Model):
     name = models.CharField(max_length=128)
+    slug = models.SlugField(max_length=255, unique=True, allow_unicode=True)
 
     class Meta:
         ordering = ("pk",)
@@ -29,13 +30,12 @@ class MenuItem(MPTTModel, SortableModel):
 
     # not mandatory fields, usage depends on what type of link is stored
     url = models.URLField(max_length=256, blank=True, null=True)
-    category = models.ForeignKey(
-        Category, blank=True, null=True, on_delete=models.CASCADE
-    )
+
     collection = models.ForeignKey(
         Collection, blank=True, null=True, on_delete=models.CASCADE
     )
     page = models.ForeignKey(Page, blank=True, null=True, on_delete=models.CASCADE)
+    product = models.ForeignKey(Product, blank=True, null=True, on_delete=models.CASCADE)
 
     objects = models.Manager()
     tree = TreeManager()

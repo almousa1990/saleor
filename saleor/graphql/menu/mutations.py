@@ -14,19 +14,18 @@ from ...page import models as page_models
 from ...product import models as product_models
 from ..core.mutations import BaseMutation, ModelDeleteMutation, ModelMutation
 from ..core.types.common import MenuError
-from ..core.utils import from_global_id_strict_type
+from ..core.utils import from_global_id_strict_type, validate_slug_and_generate_if_needed
 from ..core.utils.reordering import perform_reordering
 from ..page.types import Page
-from ..product.types import Category, Collection
+from ..product.types import Product, Collection
 from .enums import NavigationType
 from .types import Menu, MenuItem, MenuItemMoveInput
-
 
 class MenuItemInput(graphene.InputObjectType):
     name = graphene.String(description="Name of the menu item.")
     url = graphene.String(description="URL of the pointed item.")
-    category = graphene.ID(
-        description="Category to which item points.", name="category"
+    product = graphene.ID(
+        description="Product to which item points.", name="product"
     )
     collection = graphene.ID(
         description="Collection to which item points.", name="collection"
@@ -47,10 +46,11 @@ class MenuItemCreateInput(MenuItemInput):
 
 class MenuInput(graphene.InputObjectType):
     name = graphene.String(description="Name of the menu.")
+    slug = graphene.String(description="Menu slug.", required=False)
 
 
-class MenuCreateInput(graphene.InputObjectType):
-    name = graphene.String(description="Name of the menu.", required=True)
+
+class MenuCreateInput(MenuInput):
     items = graphene.List(MenuItemInput, description="List of menu items.")
 
 
@@ -70,13 +70,27 @@ class MenuCreate(ModelMutation):
     @classmethod
     def clean_input(cls, info, instance, data):
         cleaned_input = super().clean_input(info, instance, data)
+
+        try:
+            slug_field = "slug"
+            if cleaned_input.get("slug") is None:
+                slug_field = "name"
+
+            cleaned_input = validate_slug_and_generate_if_needed(
+                instance, slug_field, cleaned_input
+            )
+        except ValidationError as error:
+            error.code = MenuErrorCode.REQUIRED.value
+            raise ValidationError({"slug": error})
+
+        
         items = []
         for item in cleaned_input.get("items", []):
-            category = item.get("category")
+            product = item.get("product")
             collection = item.get("collection")
             page = item.get("page")
             url = item.get("url")
-            if len([i for i in [category, collection, page, url] if i]) > 1:
+            if len([i for i in [product, collection, page, url] if i]) > 1:
                 raise ValidationError(
                     {
                         "items": ValidationError(
@@ -86,11 +100,11 @@ class MenuCreate(ModelMutation):
                     }
                 )
 
-            if category:
-                category = cls.get_node_or_error(
-                    info, category, field="items", only_type=Category
+            if product:
+                product = cls.get_node_or_error(
+                    info, product, field="items", only_type=Product
                 )
-                item["category"] = category
+                item["product"] = product
             elif collection:
                 collection = cls.get_node_or_error(
                     info, collection, field="items", only_type=Collection
@@ -134,7 +148,21 @@ class MenuUpdate(ModelMutation):
         permissions = (MenuPermissions.MANAGE_MENUS,)
         error_type_class = MenuError
         error_type_field = "menu_errors"
+    @classmethod
+    def clean_input(cls, info, instance, data):
+        cleaned_input = super().clean_input(info, instance, data)
+        if cleaned_input.get("slug"):
+            try:
+                cleaned_input = validate_slug_and_generate_if_needed(
+                    instance, "slug", cleaned_input
+                )
+            except ValidationError as error:
+                error.code = MenuErrorCode.REQUIRED.value
+                raise ValidationError({"slug": error})
+        else:
+            cleaned_input["slug"] = instance.slug
 
+        return cleaned_input
 
 class MenuDelete(ModelDeleteMutation):
     class Arguments:
@@ -173,7 +201,7 @@ class MenuItemCreate(ModelMutation):
         input = MenuItemCreateInput(
             required=True,
             description=(
-                "Fields required to update a menu item. Only one of `url`, `category`, "
+                "Fields required to update a menu item. Only one of `url`, `product`, "
                 "`page`, `collection` is allowed per item."
             ),
         )
@@ -193,13 +221,13 @@ class MenuItemCreate(ModelMutation):
         _validate_menu_item_instance(
             cleaned_input, "collection", product_models.Collection
         )
-        _validate_menu_item_instance(cleaned_input, "category", product_models.Category)
+        _validate_menu_item_instance(cleaned_input, "product", product_models.Product)
 
         items = [
             cleaned_input.get("page"),
             cleaned_input.get("collection"),
             cleaned_input.get("url"),
-            cleaned_input.get("category"),
+            cleaned_input.get("product"),
         ]
         items = [item for item in items if item is not None]
         if len(items) > 1:
@@ -215,7 +243,7 @@ class MenuItemUpdate(MenuItemCreate):
         input = MenuItemInput(
             required=True,
             description=(
-                "Fields required to update a menu item. Only one of `url`, `category`, "
+                "Fields required to update a menu item. Only one of `url`, `product`, "
                 "`page`, `collection` is allowed per item."
             ),
         )
@@ -232,7 +260,7 @@ class MenuItemUpdate(MenuItemCreate):
         # Only one item can be assigned per menu item
         instance.page = None
         instance.collection = None
-        instance.category = None
+        instance.product = None
         instance.url = None
         return super().construct_instance(instance, cleaned_data)
 
