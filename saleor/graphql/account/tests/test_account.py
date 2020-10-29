@@ -17,7 +17,8 @@ from prices import Money
 
 from ....account import events as account_events
 from ....account.error_codes import AccountErrorCode
-from ....account.models import Address, User
+from ....account.models import User
+from ....address.models import Address
 from ....checkout import AddressType
 from ....core.jwt import create_token
 from ....core.permissions import AccountPermissions, OrderPermissions

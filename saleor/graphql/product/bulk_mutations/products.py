@@ -8,7 +8,7 @@ from ....core.permissions import ProductPermissions
 from ....product import models
 from ....product.error_codes import ProductErrorCode
 from ....product.tasks import update_product_minimal_variant_price_task
-from ....product.utils import delete_categories
+from ....product.utils import delete_categories, delete_variants
 from ....product.utils.attributes import generate_name_for_variant
 from ....warehouse import models as warehouse_models
 from ....warehouse.error_codes import StockErrorCode
@@ -342,6 +342,12 @@ class ProductVariantBulkDelete(ModelBulkDeleteMutation):
         permissions = (ProductPermissions.MANAGE_PRODUCTS,)
         error_type_class = ProductError
         error_type_field = "product_errors"
+
+
+    @classmethod
+    def bulk_action(cls, queryset):
+        db_ids = queryset.values_list('pk', flat=True)
+        delete_variants(db_ids)
 
 
 class ProductVariantStocksCreate(BaseMutation):

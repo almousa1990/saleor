@@ -1,7 +1,7 @@
 import graphene
 import pytest
 
-from ....account.models import Address
+from ....address.models import Address
 from ....warehouse.error_codes import WarehouseErrorCode
 from ....warehouse.models import Warehouse
 from ...tests.utils import get_graphql_content

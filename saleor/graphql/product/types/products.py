@@ -56,8 +56,9 @@ from ..dataloaders import (
     SelectedAttributesByProductIdLoader,
     SelectedAttributesByProductVariantIdLoader,
 )
-from ..filters import AttributeFilterInput
+from ..filters import AttributeFilterInput, ProductFilterInput
 from ..resolvers import resolve_attributes
+from ..sorters import ProductOrder
 from .attributes import Attribute, SelectedAttribute
 from .digital_contents import DigitalContent
 
@@ -462,7 +463,7 @@ class Product(CountableDjangoObjectType):
     is_available = graphene.Boolean(
         description="Whether the product is in stock and visible or not."
     )
-    has_only_default_variant = graphene.Boolean(
+    has_only_base_variant = graphene.Boolean(
         description="Whether the product has only a single variant with the default option and value."
     )
     minimal_variant_price = graphene.Field(
@@ -537,25 +538,8 @@ class Product(CountableDjangoObjectType):
         )
 
     @staticmethod
-    def resolve_has_only_default_variant(root: models.Product, info):
-        context = info.context
-        variants = ProductVariantsByProductIdLoader(context).load(root.id)
-
-        def check_variants(variants):
-            if len(variants) == 1:
-                variant = next(iter(variants))
-                selected_attributes = SelectedAttributesByProductVariantIdLoader(
-                    context).load(variant.id)
-                def check_attributes(selected):
-                    if len(selected) == 0:
-                        return True
-                    else:
-                        return False
-                return selected_attributes.then(check_attributes)
-            else:
-                return False
-
-        return variants.then(check_variants)
+    def resolve_has_only_base_variant(root: models.Product, info):
+        return root.base_variant is not None
 
 
     @staticmethod
@@ -738,7 +722,10 @@ class Vendor(CountableDjangoObjectType):
 @key(fields="id")
 class Collection(CountableDjangoObjectType):
     products = PrefetchingConnectionField(
-        Product, description="List of products in this collection."
+        Product,
+        filter=ProductFilterInput(description="Filtering options for products."),
+        sort_by=ProductOrder(description="Sort products."),
+        description="List of products in this collection.",
     )
     background_image = graphene.Field(
         Image, size=graphene.Int(description="Size of the image.")
@@ -775,6 +762,7 @@ class Collection(CountableDjangoObjectType):
 
     @staticmethod
     def resolve_products(root: models.Collection, info, first=None, **kwargs):
+        res = list(root.products.collection_sorted(info.context.user))
         return root.products.collection_sorted(info.context.user)
 
     @classmethod

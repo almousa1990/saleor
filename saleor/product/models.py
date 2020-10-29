@@ -29,6 +29,7 @@ from ..core.utils.draftjs import json_content_to_raw_text
 from ..core.utils.translations import TranslationProxy
 from ..core.weight import WeightUnits, zero_weight
 from ..discount import DiscountInfo
+from ..shipping.models import ShippingProfile
 from ..discount.utils import calculate_discounted_price
 from ..seo.models import SeoModel, SeoModelTranslation
 from . import AttributeInputType
@@ -277,6 +278,19 @@ class Product(SeoModel, ModelWithMetadata, PublishableModel):
     minimal_variant_price = MoneyField(
         amount_field="minimal_variant_price_amount", currency_field="currency"
     )
+
+    shipping_profile = models.ForeignKey(
+        ShippingProfile, related_name="products", on_delete=models.SET(ShippingProfile.objects.get(default=True).pk)
+    )
+
+    base_variant = models.OneToOneField(
+        "ProductVariant",
+        blank=True,
+        null=True,
+        on_delete=models.SET_NULL,
+        related_name="+",
+    )
+
     updated_at = models.DateTimeField(auto_now=True, null=True)
 
     objects = ProductsQueryset.as_manager()
@@ -437,6 +451,10 @@ class ProductVariant(ModelWithMetadata):
         return self.name or self.sku
 
     @property
+    def shipping_profile(self) -> ShippingProfile:
+        return self.product.shipping_profile
+
+    @property
     def is_visible(self) -> bool:
         return self.product.is_visible
 
@@ -473,6 +491,7 @@ class ProductVariant(ModelWithMetadata):
     def get_first_image(self) -> "ProductImage":
         images = list(self.images.all())
         return images[0] if images else self.product.get_first_image()
+        
 
 
 class ProductVariantTranslation(models.Model):
@@ -766,7 +785,7 @@ class CollectionProduct(SortableModel):
         unique_together = (("collection", "product"),)
 
     def get_ordering_queryset(self):
-        return self.product.collectionproduct.all()
+        return self.collection.collectionproduct.all()
 
 
 class Collection(SeoModel, ModelWithMetadata, PublishableModel):

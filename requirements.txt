@@ -127,3 +127,4 @@ vine==1.3.0
 weasyprint==51
 webencodings==0.5.1
 websockets==8.1
+django-taggit==1.3.0

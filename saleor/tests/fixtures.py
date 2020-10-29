@@ -23,7 +23,8 @@ from django_countries import countries
 from PIL import Image
 from prices import Money, TaxedMoney
 
-from ..account.models import Address, StaffNotificationRecipient, User
+from ..account.models import StaffNotificationRecipient, User
+from ..address.models import Address
 from ..app.models import App, AppInstallation
 from ..app.types import AppType
 from ..checkout import utils

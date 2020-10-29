@@ -12,7 +12,7 @@ class Migration(migrations.Migration):
             model_name="user",
             name="addresses",
             field=models.ManyToManyField(
-                blank=True, related_name="user_addresses", to="account.Address"
+                blank=True, related_name="user_addresses", to="address.Address"
             ),
         )
     ]

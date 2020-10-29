@@ -22,17 +22,33 @@ class ShippingZoneBulkDelete(ModelBulkDeleteMutation):
         error_type_field = "shipping_errors"
 
 
-class ShippingPriceBulkDelete(ModelBulkDeleteMutation):
+class ShippingMethodBulkDelete(ModelBulkDeleteMutation):
     class Arguments:
         ids = graphene.List(
             graphene.ID,
             required=True,
-            description="List of shipping price IDs to delete.",
+            description="List of shipping method IDs to delete.",
         )
 
     class Meta:
-        description = "Deletes shipping prices."
+        description = "Deletes shipping methods."
         model = models.ShippingMethod
         permissions = (ShippingPermissions.MANAGE_SHIPPING,)
         error_type_class = ShippingError
         error_type_field = "shipping_errors"
+
+class ShippingProfileBulkDelete(ModelBulkDeleteMutation):
+    class Arguments:
+        ids = graphene.List(
+            graphene.ID,
+            required=True,
+            description="List of shipping profile IDs to delete.",
+        )
+
+    class Meta:
+        description = "Deletes shipping profiles."
+        model = models.ShippingProfile
+        permissions = (ShippingPermissions.MANAGE_SHIPPING,)
+        error_type_class = ShippingError
+        error_type_field = "shipping_errors"
+

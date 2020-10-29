@@ -23,7 +23,7 @@ from ....product.thumbnails import (
     create_collection_background_image_thumbnails,
     create_product_thumbnails,
 )
-from ....product.utils import delete_categories
+from ....product.utils import delete_categories, delete_variants
 from ....product.utils.attributes import (
     associate_attribute_values_to_instance,
     generate_name_for_variant,
@@ -261,6 +261,15 @@ class CollectionCreate(ModelMutation):
         return cleaned_input
 
     @classmethod
+    def _save_m2m(cls, info, instance, cleaned_data):
+        products = cleaned_data.get("products", None)
+        if products is not None:
+            for index, product in enumerate(products):
+                collection_product = models.CollectionProduct(product=product, collection=instance, sort_order=index)
+                collection_product.save()
+
+
+    @classmethod
     def save(cls, info, instance, cleaned_input):
         instance.save()
         if cleaned_input.get("background_image"):
@@ -409,7 +418,12 @@ class CollectionAddProducts(BaseMutation):
             info, collection_id, field="collection_id", only_type=Collection
         )
         products = cls.get_nodes_or_error(products, "products", Product)
-        collection.products.add(*products)
+
+        for product in products:
+            collection_product = models.CollectionProduct(product=product, collection=collection)
+            collection_product.save()
+
+        #collection.products.add(*products)
         if collection.sale_set.exists():
             # Updated the db entries, recalculating discounts of affected products
             update_products_minimal_variant_prices_of_catalogues_task.delay(
@@ -443,7 +457,11 @@ class CollectionRemoveProducts(BaseMutation):
             info, collection_id, field="collection_id", only_type=Collection
         )
         products = cls.get_nodes_or_error(products, "products", only_type=Product)
-        collection.products.remove(*products)
+
+        for collection_product in models.CollectionProduct.objects.filter(product_id__in = [product.pk for product in products]):
+            collection_product.delete()
+
+        #collection.products.remove(*products)
         if collection.sale_set.exists():
             # Updated the db entries, recalculating discounts of affected products
             update_products_minimal_variant_prices_of_catalogues_task.delay(
@@ -1169,9 +1187,15 @@ class ProductCreate(ModelMutation):
         variants_input = cleaned_input.get("variants", None)
         if variants_input is not None:
             variants = cls.update_or_create_variants(info, instance, variants_input, errors)
+        
 
         if errors:
             raise ValidationError(errors)
+        
+        if variants and instance.base_variant is not None:
+            instance.base_variant.delete()
+            instance.base_variant = None
+            instance.save()
 
         cls.save_variants(info, variants, variants_input)
 
@@ -1431,6 +1455,34 @@ class ProductVariantCreate(ModelMutation):
                 )
             except ValidationError as exc:
                 raise ValidationError({"attributes": exc})
+        else:
+            if instance.product_id is not None:
+                # If the variant is getting updated,
+                # check if it has attributes, and if it is not the base variant
+                # to make sure all variants have attributes
+                if not instance.attributes  and instance.product.base_variant != variant:
+                    raise ValidationError(
+                        {
+                            "attributes": ValidationError(
+                                "None base variants must have attributes",
+                                code=ProductErrorCode.INVALID.value,
+                            )
+                        }
+                    )
+
+            else:
+                # If the variant is getting created,
+                # and doesn't has attributes
+                 raise ValidationError(
+                        {
+                            "attributes": ValidationError(
+                                "None base variants must have attributes",
+                                code=ProductErrorCode.INVALID.value,
+                            )
+                        }
+                    )
+    
+
         return cleaned_input
 
     @classmethod
@@ -1464,6 +1516,12 @@ class ProductVariantCreate(ModelMutation):
     @transaction.atomic()
     def save(cls, info, instance, cleaned_input):
         instance.save()
+
+        if  not instance.product.base_variant == instance:
+            instance.product.base_variant.delete()
+            instance.product.base_variant = None
+            instance.product.save()
+
         # Recalculate the "minimal variant price" for the parent product
         update_product_minimal_variant_price_task.delay(instance.product_id)
         stocks = cleaned_input.get("stocks")
@@ -1538,10 +1596,21 @@ class ProductVariantDelete(ModelDeleteMutation):
         error_type_field = "product_errors"
 
     @classmethod
-    def success_response(cls, instance):
-        # Update the "minimal_variant_prices" of the parent product
-        update_product_minimal_variant_price_task.delay(instance.product_id)
-        return super().success_response(instance)
+    def perform_mutation(cls, _root, info, **data):
+        if not cls.check_permissions(info.context):
+            raise PermissionDenied()
+
+        node_id = data.get("id")
+        instance = cls.get_node_or_error(info, node_id, only_type=ProductVariant)
+
+        if instance:
+            cls.clean_instance(info, instance)
+
+        db_id = instance.id
+        delete_variants([db_id])
+
+        instance.id = db_id
+        return cls.success_response(instance)
 
 
 class ProductVariantUpdateMeta(UpdateMetaBaseMutation):

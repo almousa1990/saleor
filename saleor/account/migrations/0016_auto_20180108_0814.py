@@ -77,7 +77,7 @@ class Migration(migrations.Migration):
         migrations.AlterField(
             model_name="user",
             name="addresses",
-            field=models.ManyToManyField(blank=True, to="account.Address"),
+            field=models.ManyToManyField(blank=True, to="address.Address"),
         ),
         migrations.AlterField(
             model_name="user",
@@ -94,7 +94,7 @@ class Migration(migrations.Migration):
                 null=True,
                 on_delete=django.db.models.deletion.SET_NULL,
                 related_name="+",
-                to="account.Address",
+                to="address.Address",
             ),
         ),
         migrations.AlterField(
@@ -105,7 +105,7 @@ class Migration(migrations.Migration):
                 null=True,
                 on_delete=django.db.models.deletion.SET_NULL,
                 related_name="+",
-                to="account.Address",
+                to="address.Address",
             ),
         ),
         migrations.AlterField(

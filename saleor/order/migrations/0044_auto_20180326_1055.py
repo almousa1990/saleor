@@ -31,7 +31,7 @@ class Migration(migrations.Migration):
                 null=True,
                 on_delete=django.db.models.deletion.SET_NULL,
                 related_name="+",
-                to="account.Address",
+                to="address.Address",
             ),
         ),
         migrations.AlterField(
@@ -47,7 +47,7 @@ class Migration(migrations.Migration):
                 null=True,
                 on_delete=django.db.models.deletion.SET_NULL,
                 related_name="+",
-                to="account.Address",
+                to="address.Address",
             ),
         ),
         migrations.AlterField(

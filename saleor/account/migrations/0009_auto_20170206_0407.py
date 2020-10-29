@@ -24,7 +24,7 @@ class Migration(migrations.Migration):
             model_name="user",
             name="addresses",
             field=models.ManyToManyField(
-                blank=True, to="account.Address", verbose_name="addresses"
+                blank=True, to="address.Address", verbose_name="addresses"
             ),
         ),
         migrations.AlterField(

@@ -21,7 +21,8 @@ if TYPE_CHECKING:
     from ..checkout.models import Checkout, CheckoutLine
     from ..discount import DiscountInfo
     from ..product.models import Product, ProductType
-    from ..account.models import Address, User
+    from ..account.models import User
+    from ..address.models import Address
     from ..order.models import Fulfillment, OrderLine, Order
     from ..invoice.models import Invoice
 

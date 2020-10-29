@@ -21,6 +21,8 @@ from .translations.schema import TranslationQueries
 from .warehouse.schema import StockQueries, WarehouseMutations, WarehouseQueries
 from .webhook.schema import WebhookMutations, WebhookQueries
 from .upload.schema import UploadMutations
+from .country.schema import CountryQueries
+from .theme.schema import ThemeQueries, ThemeMutations
 
 
 class Query(
@@ -43,6 +45,8 @@ class Query(
     TranslationQueries,
     WarehouseQueries,
     WebhookQueries,
+    CountryQueries,
+    ThemeQueries,
 ):
     pass
 
@@ -66,7 +70,8 @@ class Mutation(
     ShopMutations,
     WarehouseMutations,
     WebhookMutations,
-    UploadMutations
+    UploadMutations,
+    ThemeMutations
 ):
     pass
 

@@ -12,7 +12,7 @@ from django_countries.fields import Country, CountryField
 from django_prices.models import MoneyField
 from prices import Money
 
-from ..account.models import Address
+from ..address.models import Address
 from ..core.models import ModelWithMetadata
 from ..core.permissions import CheckoutPermissions
 from ..core.taxes import zero_money

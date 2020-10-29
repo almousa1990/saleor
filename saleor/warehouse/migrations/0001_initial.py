@@ -112,7 +112,7 @@ class Migration(migrations.Migration):
                     "address",
                     models.ForeignKey(
                         on_delete=django.db.models.deletion.PROTECT,
-                        to="account.Address",
+                        to="address.Address",
                     ),
                 ),
                 (

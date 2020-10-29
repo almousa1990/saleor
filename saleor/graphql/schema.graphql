@@ -124,7 +124,7 @@ type Address implements Node {
   postalCode: String!
   country: CountryDisplay!
   countryArea: String!
-  phone: String
+  phone: String!
   isDefaultShippingAddress: Boolean
   isDefaultBillingAddress: Boolean
 }
@@ -1069,7 +1069,7 @@ type Collection implements Node & ObjectWithMetadata {
   metadata: [MetadataItem]!
   privateMeta: [MetaStore]! @deprecated(reason: "Use the `privetaMetadata` field. This field will be removed after 2020-07-31.")
   meta: [MetaStore]! @deprecated(reason: "Use the `metadata` field. This field will be removed after 2020-07-31.")
-  products(before: String, after: String, first: Int, last: Int): ProductCountableConnection
+  products(filter: ProductFilterInput, sortBy: ProductOrder, before: String, after: String, first: Int, last: Int): ProductCountableConnection
   backgroundImage(size: Int): Image
   translation(languageCode: LanguageCodeEnum!): CollectionTranslation
 }
@@ -1263,6 +1263,14 @@ type ConfirmEmailChange {
   errors: [Error!]! @deprecated(reason: "Use typed errors with error codes. This field will be removed after 2020-07-31.")
   user: User
   accountErrors: [AccountError!]!
+}
+
+type Country implements Node {
+  id: ID!
+  name: String!
+  code: String!
+  provinces: [Province]
+  translation(languageCode: LanguageCodeEnum!): CountryTranslation
 }
 
 enum CountryCode {
@@ -1518,10 +1526,31 @@ enum CountryCode {
   ZW
 }
 
+type CountryCountableConnection {
+  pageInfo: PageInfo!
+  edges: [CountryCountableEdge!]!
+  totalCount: Int
+}
+
+type CountryCountableEdge {
+  node: Country!
+  cursor: String!
+}
+
 type CountryDisplay {
   code: String!
   country: String!
   vat: VAT
+}
+
+input CountryFilterInput {
+  search: String
+}
+
+type CountryTranslation implements Node {
+  name: String
+  id: ID!
+  language: LanguageDisplay!
 }
 
 type CreateToken {
@@ -2568,6 +2597,7 @@ input MoveProductInput {
 }
 
 type Mutation {
+  themeUpload(file: Upload!, id: ID!): ThemeUpload
   stagedUploadsCreate(input: [StagedUploadInput]!): StagedUploadsCreate
   webhookCreate(input: WebhookCreateInput!): WebhookCreate
   webhookDelete(id: ID!): WebhookDelete
@@ -2588,15 +2618,21 @@ type Mutation {
   shopFetchTaxRates: ShopFetchTaxRates
   shopSettingsTranslate(input: ShopSettingsTranslationInput!, languageCode: LanguageCodeEnum!): ShopSettingsTranslate
   shopAddressUpdate(input: AddressInput): ShopAddressUpdate
-  shippingPriceCreate(input: ShippingPriceInput!): ShippingPriceCreate
-  shippingPriceDelete(id: ID!): ShippingPriceDelete
-  shippingPriceBulkDelete(ids: [ID]!): ShippingPriceBulkDelete
-  shippingPriceUpdate(id: ID!, input: ShippingPriceInput!): ShippingPriceUpdate
-  shippingPriceTranslate(id: ID!, input: NameTranslationInput!, languageCode: LanguageCodeEnum!): ShippingPriceTranslate
-  shippingZoneCreate(input: ShippingZoneCreateInput!): ShippingZoneCreate
+  shippingMethodCreate(input: ShippingMethodInput!): ShippingMethodCreate
+  shippingMethodDelete(id: ID!): ShippingMethodDelete
+  shippingMethodBulkDelete(ids: [ID]!): ShippingMethodBulkDelete
+  shippingMethodUpdate(id: ID!, input: ShippingMethodInput!): ShippingMethodUpdate
+  shippingMethodTranslate(id: ID!, input: NameTranslationInput!, languageCode: LanguageCodeEnum!): ShippingMethodTranslate
+  shippingZoneCreate(input: ShippingZoneInput!): ShippingZoneCreate
   shippingZoneDelete(id: ID!): ShippingZoneDelete
   shippingZoneBulkDelete(ids: [ID]!): ShippingZoneBulkDelete
-  shippingZoneUpdate(id: ID!, input: ShippingZoneUpdateInput!): ShippingZoneUpdate
+  shippingZoneUpdate(id: ID!, input: ShippingZoneInput!): ShippingZoneUpdate
+  shippingProfileCreate(input: ShippingProfileCreateInput!): ShippingProfileCreate
+  shippingProfileDelete(id: ID!): ShippingProfileDelete
+  shippingProfileBulkDelete(ids: [ID]!): ShippingProfileBulkDelete
+  shippingProfileUpdate(id: ID!, input: ShippingProfileUpdateInput!): ShippingProfileUpdate
+  shippingProfileWarehouseGroupCreate(input: ShippingProfileWarehouseGroupCreateInput!): ShippingProfileWarehouseGroupCreate
+  shippingProfileWarehouseGroupUpdate(id: ID!, input: ShippingProfileWarehouseGroupUpdateInput!): ShippingProfileWarehouseGroupUpdate
   attributeCreate(input: AttributeCreateInput!): AttributeCreate
   attributeDelete(id: ID!): AttributeDelete
   attributeBulkDelete(ids: [ID]!): AttributeBulkDelete
@@ -3652,7 +3688,7 @@ type Product implements Node & ObjectWithMetadata {
   thumbnail(size: Int): Image
   pricing: ProductPricingInfo
   isAvailable: Boolean
-  hasOnlyDefaultVariant: Boolean
+  hasOnlyBaseVariant: Boolean
   minimalVariantPrice: Money
   taxType: TaxType
   tags: [String!]
@@ -4202,7 +4238,26 @@ type ProductVariantUpdatePrivateMeta {
   productVariant: ProductVariant
 }
 
+type Province implements Node {
+  name: String!
+  code: String!
+  id: ID!
+  translation(languageCode: LanguageCodeEnum!): ProvinceTranslation
+}
+
+type ProvinceTranslation implements Node {
+  name: String
+  id: ID!
+  language: LanguageDisplay!
+}
+
 type Query {
+  theme(slug: String): Theme
+  themes(filter: ThemeFilterInput, before: String, after: String, first: Int, last: Int): ThemeCountableConnection
+  themeAsset(themeSlug: String, path: String): ThemeAsset
+  themeFile(themeSlug: String, name: String): ThemeFile
+  country(code: String): Country
+  countries(filter: CountryFilterInput, before: String, after: String, first: Int, last: Int): CountryCountableConnection
   webhook(id: ID!): Webhook
   webhooks(sortBy: WebhookSortingInput, filter: WebhookFilterInput, before: String, after: String, first: Int, last: Int): WebhookCountableConnection @deprecated(reason: "Use webhooks field on app(s) query instead. This field will be removed after 2020-07-31.")
   webhookEvents: [WebhookEvent]
@@ -4214,8 +4269,12 @@ type Query {
   stock(id: ID!): Stock
   stocks(filter: StockFilterInput, before: String, after: String, first: Int, last: Int): StockCountableConnection
   shop: Shop!
+  shippingMethod(id: ID!): ShippingMethod
+  shippingMethods(before: String, after: String, first: Int, last: Int): ShippingMethodCountableConnection
   shippingZone(id: ID!): ShippingZone
   shippingZones(before: String, after: String, first: Int, last: Int): ShippingZoneCountableConnection
+  shippingProfile(id: ID!): ShippingProfile
+  shippingProfiles(before: String, after: String, first: Int, last: Int): ShippingProfileCountableConnection
   digitalContent(id: ID!): DigitalContent
   digitalContents(before: String, after: String, first: Int, last: Int): DigitalContentCountableConnection
   attributes(filter: AttributeFilterInput, sortBy: AttributeSortingInput, before: String, after: String, first: Int, last: Int): AttributeCountableConnection
@@ -4545,11 +4604,24 @@ type SetPassword {
   accountErrors: [AccountError!]!
 }
 
+type ShippingCountry implements Node {
+  id: ID!
+  code: String
+  name: String
+  provinces: [ShippingProvince]
+}
+
+input ShippingCountryInput {
+  code: String
+  provinces: [String]
+}
+
 type ShippingError {
   field: String
   message: String
   code: ShippingErrorCode!
   warehouses: [ID!]
+  products: [ID!]
 }
 
 enum ShippingErrorCode {
@@ -4561,6 +4633,7 @@ enum ShippingErrorCode {
   REQUIRED
   UNIQUE
   DUPLICATED_INPUT_ITEM
+  DUPLICATED_COUNTRY_IN_GROUP
 }
 
 type ShippingMethod implements Node {
@@ -4575,10 +4648,58 @@ type ShippingMethod implements Node {
   translation(languageCode: LanguageCodeEnum!): ShippingMethodTranslation
 }
 
+type ShippingMethodBulkDelete {
+  errors: [Error!]! @deprecated(reason: "Use typed errors with error codes. This field will be removed after 2020-07-31.")
+  count: Int!
+  shippingErrors: [ShippingError!]!
+}
+
+type ShippingMethodCountableConnection {
+  pageInfo: PageInfo!
+  edges: [ShippingMethodCountableEdge!]!
+  totalCount: Int
+}
+
+type ShippingMethodCountableEdge {
+  node: ShippingMethod!
+  cursor: String!
+}
+
+type ShippingMethodCreate {
+  errors: [Error!]! @deprecated(reason: "Use typed errors with error codes. This field will be removed after 2020-07-31.")
+  shippingZone: ShippingZone
+  shippingErrors: [ShippingError!]!
+  shippingMethod: ShippingMethod
+}
+
+type ShippingMethodDelete {
+  errors: [Error!]! @deprecated(reason: "Use typed errors with error codes. This field will be removed after 2020-07-31.")
+  shippingMethod: ShippingMethod
+  shippingZone: ShippingZone
+  shippingErrors: [ShippingError!]!
+}
+
+input ShippingMethodInput {
+  name: String
+  price: Decimal
+  minimumOrderPrice: Decimal
+  maximumOrderPrice: Decimal
+  minimumOrderWeight: WeightScalar
+  maximumOrderWeight: WeightScalar
+  type: ShippingMethodTypeEnum
+  shippingZone: ID
+}
+
 type ShippingMethodTranslatableContent implements Node {
   id: ID!
   name: String!
   translation(languageCode: LanguageCodeEnum!): ShippingMethodTranslation
+  shippingMethod: ShippingMethod
+}
+
+type ShippingMethodTranslate {
+  errors: [Error!]! @deprecated(reason: "Use typed errors with error codes. This field will be removed after 2020-07-31.")
+  translationErrors: [TranslationError!]!
   shippingMethod: ShippingMethod
 }
 
@@ -4591,60 +4712,117 @@ type ShippingMethodTranslation implements Node {
 enum ShippingMethodTypeEnum {
   PRICE
   WEIGHT
+  GENERAL
 }
 
-type ShippingPriceBulkDelete {
+type ShippingMethodUpdate {
+  errors: [Error!]! @deprecated(reason: "Use typed errors with error codes. This field will be removed after 2020-07-31.")
+  shippingZone: ShippingZone
+  shippingErrors: [ShippingError!]!
+  shippingMethod: ShippingMethod
+}
+
+type ShippingProfile implements Node {
+  id: ID!
+  name: String!
+  default: Boolean!
+  profileWarehouseGroups: [ShippingProfileWarehouseGroup]
+  products(before: String, after: String, first: Int, last: Int): ProductCountableConnection
+  warehousesWithoutRatesCount: Int
+  unassignedWarehouses: [Warehouse]
+  originWarehouseCount: Int
+  activeShippingMethodCount: Int
+  shippingCountryCount: Int
+}
+
+type ShippingProfileBulkDelete {
   errors: [Error!]! @deprecated(reason: "Use typed errors with error codes. This field will be removed after 2020-07-31.")
   count: Int!
   shippingErrors: [ShippingError!]!
 }
 
-type ShippingPriceCreate {
-  errors: [Error!]! @deprecated(reason: "Use typed errors with error codes. This field will be removed after 2020-07-31.")
-  shippingZone: ShippingZone
-  shippingErrors: [ShippingError!]!
-  shippingMethod: ShippingMethod
+type ShippingProfileCountableConnection {
+  pageInfo: PageInfo!
+  edges: [ShippingProfileCountableEdge!]!
+  totalCount: Int
 }
 
-type ShippingPriceDelete {
-  errors: [Error!]! @deprecated(reason: "Use typed errors with error codes. This field will be removed after 2020-07-31.")
-  shippingMethod: ShippingMethod
-  shippingZone: ShippingZone
-  shippingErrors: [ShippingError!]!
+type ShippingProfileCountableEdge {
+  node: ShippingProfile!
+  cursor: String!
 }
 
-input ShippingPriceInput {
+type ShippingProfileCreate {
+  errors: [Error!]! @deprecated(reason: "Use typed errors with error codes. This field will be removed after 2020-07-31.")
+  shippingErrors: [ShippingError!]!
+  shippingProfile: ShippingProfile
+}
+
+input ShippingProfileCreateInput {
   name: String
-  price: Decimal
-  minimumOrderPrice: Decimal
-  maximumOrderPrice: Decimal
-  minimumOrderWeight: WeightScalar
-  maximumOrderWeight: WeightScalar
-  type: ShippingMethodTypeEnum
-  shippingZone: ID
+  addProducts: [ID]
 }
 
-type ShippingPriceTranslate {
+type ShippingProfileDelete {
   errors: [Error!]! @deprecated(reason: "Use typed errors with error codes. This field will be removed after 2020-07-31.")
-  translationErrors: [TranslationError!]!
-  shippingMethod: ShippingMethod
-}
-
-type ShippingPriceUpdate {
-  errors: [Error!]! @deprecated(reason: "Use typed errors with error codes. This field will be removed after 2020-07-31.")
-  shippingZone: ShippingZone
   shippingErrors: [ShippingError!]!
-  shippingMethod: ShippingMethod
+  shippingProfile: ShippingProfile
+}
+
+type ShippingProfileUpdate {
+  errors: [Error!]! @deprecated(reason: "Use typed errors with error codes. This field will be removed after 2020-07-31.")
+  shippingErrors: [ShippingError!]!
+  shippingProfile: ShippingProfile
+}
+
+input ShippingProfileUpdateInput {
+  name: String
+  addProducts: [ID]
+  removeProducts: [ID]
+}
+
+type ShippingProfileWarehouseGroup implements Node {
+  id: ID!
+  warehouses: [Warehouse]
+  shippingZones: [ShippingZone]
+}
+
+type ShippingProfileWarehouseGroupCreate {
+  errors: [Error!]! @deprecated(reason: "Use typed errors with error codes. This field will be removed after 2020-07-31.")
+  shippingProfile: ShippingProfile
+  shippingErrors: [ShippingError!]!
+  shippingProfileWarehouseGroup: ShippingProfileWarehouseGroup
+}
+
+input ShippingProfileWarehouseGroupCreateInput {
+  addWarehouses: [ID]
+  shippingProfile: ID
+}
+
+type ShippingProfileWarehouseGroupUpdate {
+  errors: [Error!]! @deprecated(reason: "Use typed errors with error codes. This field will be removed after 2020-07-31.")
+  shippingProfile: ShippingProfile
+  shippingErrors: [ShippingError!]!
+  shippingProfileWarehouseGroup: ShippingProfileWarehouseGroup
+}
+
+input ShippingProfileWarehouseGroupUpdateInput {
+  addWarehouses: [ID]
+  shippingProfile: ID
+  removeWarehouses: [ID]
+}
+
+type ShippingProvince {
+  code: String
+  name: String
 }
 
 type ShippingZone implements Node {
   id: ID!
   name: String!
-  default: Boolean!
   priceRange: MoneyRange
-  countries: [CountryDisplay]
+  countries: [ShippingCountry]
   shippingMethods: [ShippingMethod]
-  warehouses: [Warehouse]
 }
 
 type ShippingZoneBulkDelete {
@@ -4670,31 +4848,22 @@ type ShippingZoneCreate {
   shippingZone: ShippingZone
 }
 
-input ShippingZoneCreateInput {
-  name: String
-  countries: [String]
-  default: Boolean
-  addWarehouses: [ID]
-}
-
 type ShippingZoneDelete {
   errors: [Error!]! @deprecated(reason: "Use typed errors with error codes. This field will be removed after 2020-07-31.")
   shippingErrors: [ShippingError!]!
   shippingZone: ShippingZone
 }
 
+input ShippingZoneInput {
+  name: String
+  countries: [ShippingCountryInput]
+  shippingProfileWarehouseGroup: ID
+}
+
 type ShippingZoneUpdate {
   errors: [Error!]! @deprecated(reason: "Use typed errors with error codes. This field will be removed after 2020-07-31.")
   shippingErrors: [ShippingError!]!
   shippingZone: ShippingZone
-}
-
-input ShippingZoneUpdateInput {
-  name: String
-  countries: [String]
-  default: Boolean
-  addWarehouses: [ID]
-  removeWarehouses: [ID]
 }
 
 type Shop {
@@ -5037,6 +5206,45 @@ type TaxedMoney {
 type TaxedMoneyRange {
   start: TaxedMoney
   stop: TaxedMoney
+}
+
+type Theme implements Node {
+  id: ID!
+  name: String!
+  slug: String!
+  files: [ThemeFile]
+  assets: [ThemeAsset]
+}
+
+type ThemeAsset implements Node {
+  path: String!
+  id: ID!
+}
+
+type ThemeCountableConnection {
+  pageInfo: PageInfo!
+  edges: [ThemeCountableEdge!]!
+  totalCount: Int
+}
+
+type ThemeCountableEdge {
+  node: Theme!
+  cursor: String!
+}
+
+type ThemeFile implements Node {
+  path: String!
+  content: String
+  id: ID!
+  name: String
+}
+
+input ThemeFilterInput {
+  search: String
+}
+
+type ThemeUpload {
+  errors: [Error!]! @deprecated(reason: "Use typed errors with error codes. This field will be removed after 2020-07-31.")
 }
 
 type Transaction implements Node {
@@ -5519,7 +5727,6 @@ type Warehouse implements Node {
   name: String!
   slug: String!
   companyName: String!
-  shippingZones(before: String, after: String, first: Int, last: Int): ShippingZoneCountableConnection!
   address: Address!
   email: String!
 }
@@ -5769,7 +5976,7 @@ enum WeightUnitsEnum {
 
 scalar _Any
 
-union _Entity = Address | User | Group | ServiceAccount | App | ProductVariant | Product | ProductType | Vendor | Collection | Category | ProductImage
+union _Entity = ProductVariant | Product | ProductType | Vendor | Collection | Category | ProductImage | Address | User | Group | ServiceAccount | App
 
 type _Service {
   sdl: String

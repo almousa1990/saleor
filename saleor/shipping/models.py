@@ -8,6 +8,7 @@ from django_measurement.models import MeasurementField
 from django_prices.models import MoneyField
 from measurement.measures import Weight
 from prices import Money, MoneyRange
+from django.contrib.postgres.fields import ArrayField
 
 from ..core.permissions import ShippingPermissions
 from ..core.utils.translations import TranslationProxy
@@ -59,10 +60,39 @@ def _get_weight_type_display(min_weight, max_weight):
     }
 
 
+class ShippingProfile(models.Model):
+    name = models.CharField(max_length=100)
+    default = models.BooleanField(default=False)
+
+    def __str__(self):
+        return self.name
+
+    class Meta:
+        permissions = (
+            (ShippingPermissions.MANAGE_SHIPPING.codename, "Manage shipping."),
+        )
+
+class ShippingProfileWarehouseGroup(models.Model):
+    shipping_profile = models.ForeignKey(
+        ShippingProfile, related_name="warehouse_groups", on_delete=models.CASCADE
+    )
+
+    def __str__(self):
+        return self.pk
+
+    class Meta:
+        permissions = (
+            (ShippingPermissions.MANAGE_SHIPPING.codename, "Manage shipping."),
+        )
+
+
 class ShippingZone(models.Model):
     name = models.CharField(max_length=100)
-    countries = CountryField(multiple=True, default=[], blank=True)
-    default = models.BooleanField(default=False)
+    shipping_profile_warehouse_group = models.ForeignKey(
+        ShippingProfileWarehouseGroup, related_name="shipping_zones", on_delete=models.CASCADE
+    )
+    
+    objects = models.Manager()
 
     def __str__(self):
         return self.name
@@ -76,6 +106,22 @@ class ShippingZone(models.Model):
         if prices:
             return MoneyRange(min(prices), max(prices))
         return None
+
+    class Meta:
+        permissions = (
+            (ShippingPermissions.MANAGE_SHIPPING.codename, "Manage shipping."),
+        )
+
+
+
+class ShippingCountry(models.Model):
+    code = models.CharField(max_length=2)
+    provinces = ArrayField(
+            models.CharField(max_length=10), blank=True, default=list
+        )
+    shipping_zone = models.ForeignKey(ShippingZone, related_name="countries", on_delete=models.CASCADE)
+    def __str__(self):
+        return self.code
 
     class Meta:
         permissions = (
@@ -214,3 +260,4 @@ class ShippingMethodTranslation(models.Model):
 
     class Meta:
         unique_together = (("language_code", "shipping_method"),)
+

@@ -5,7 +5,7 @@ from django.conf import settings
 from django.db import transaction
 
 from ...core.taxes import TaxedMoney, zero_taxed_money
-from ..tasks import update_products_minimal_variant_prices_task
+from ..tasks import update_products_minimal_variant_prices_task, update_product_minimal_variant_price_task
 
 if TYPE_CHECKING:
     # flake8: noqa
@@ -58,3 +58,34 @@ def collect_categories_tree_products(category: "Category") -> "QuerySet[Product]
     for descendant in descendants:
         products = products | descendant.products.all()
     return products
+
+
+@transaction.atomic
+def delete_variants(variants_id: List[str]):
+    """Delete variants and set default variant accordingly.
+
+    """
+    from ..models import ProductVariant
+
+    variants = ProductVariant.objects.select_for_update().filter(pk__in=variants_id)
+    variants.prefetch_related("product")
+
+    for variant in variants:
+        product = variant.product
+        if product.variants.count() == 1:
+            base_variant = ProductVariant(
+                product=product,
+                sku=variant.sku,
+                price_amount=variant.price_amount,
+                requires_shipping=variant.requires_shipping,
+                currency=variant.currency,
+                charge_taxes=variant.charge_taxes,
+                track_inventory=variant.track_inventory)
+            variant.delete()
+            base_variant.save()
+
+            product.base_variant = base_variant
+            product.save()
+            update_product_minimal_variant_price_task.delay(product.pk)
+        else:
+            variant.delete()

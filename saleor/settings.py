@@ -229,6 +229,7 @@ INSTALLED_APPS = [
     # Local apps
     "saleor.plugins",
     "saleor.account",
+    "saleor.address",
     "saleor.discount",
     "saleor.giftcard",
     "saleor.product",
@@ -251,6 +252,8 @@ INSTALLED_APPS = [
     "saleor.wishlist",
     "saleor.app",
     "saleor.upload",
+    "saleor.country",
+    "saleor.theme",
     # External apps
     "versatileimagefield",
     "django_measurement",

@@ -1,7 +1,7 @@
 import pytest
 from django.utils.text import slugify
 
-from ...account.models import Address
+from ...address.models import Address
 from ...product.models import Product
 from ...search.backends.postgresql import search_storefront
 

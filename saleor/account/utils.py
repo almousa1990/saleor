@@ -22,13 +22,15 @@ def store_user_address(user, address, address_type):
 
 
 def set_user_default_billing_address(user, address):
-    user.default_billing_address = address
-    user.save(update_fields=["default_billing_address"])
+    user_address = address.useraddress_set.first()
+    user_address.is_default_billing_address = True
+    user_address.save()
 
 
 def set_user_default_shipping_address(user, address):
-    user.default_shipping_address = address
-    user.save(update_fields=["default_shipping_address"])
+    user_address = address.useraddress_set.first()
+    user_address.is_default_shipping_address = True
+    user_address.save()
 
 
 def change_user_default_address(user, address, address_type):

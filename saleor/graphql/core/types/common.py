@@ -187,7 +187,11 @@ class ShippingError(Error):
         description="List of warehouse IDs which causes the error.",
         required=False,
     )
-
+    products = graphene.List(
+        graphene.NonNull(graphene.ID),
+        description="List of products IDs which causes the error.",
+        required=False,
+    )
 
 class PageError(Error):
     code = PageErrorCode(description="The error code.", required=True)

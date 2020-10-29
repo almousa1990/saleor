@@ -126,7 +126,7 @@ class Migration(migrations.Migration):
                     models.ForeignKey(
                         related_name="+",
                         editable=False,
-                        to="account.Address",
+                        to="address.Address",
                         on_delete=django.db.models.deletion.CASCADE,
                     ),
                 ),
@@ -135,7 +135,7 @@ class Migration(migrations.Migration):
                     models.ForeignKey(
                         related_name="+",
                         editable=False,
-                        to="account.Address",
+                        to="address.Address",
                         null=True,
                         on_delete=django.db.models.deletion.CASCADE,
                     ),

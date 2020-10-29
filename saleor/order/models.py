@@ -15,7 +15,7 @@ from django_prices.models import MoneyField, TaxedMoneyField
 from measurement.measures import Weight
 from prices import Money
 
-from ..account.models import Address
+from ..address.models import Address
 from ..core.models import ModelWithMetadata
 from ..core.permissions import OrderPermissions
 from ..core.taxes import zero_money, zero_taxed_money
@@ -26,6 +26,7 @@ from ..giftcard.models import GiftCard
 from ..payment import ChargeStatus, TransactionKind
 from ..shipping.models import ShippingMethod
 from . import FulfillmentStatus, OrderEvents, OrderStatus
+
 
 
 class OrderQueryset(models.QuerySet):

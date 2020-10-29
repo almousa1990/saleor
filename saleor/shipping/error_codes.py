@@ -10,3 +10,5 @@ class ShippingErrorCode(Enum):
     REQUIRED = "required"
     UNIQUE = "unique"
     DUPLICATED_INPUT_ITEM = "duplicated_input_item"
+    DUPLICATED_COUNTRY_IN_GROUP = "duplicated_country_in_group"
+    DEFAULT_SHIPPING_PROFILE = "default_shipping_profile"

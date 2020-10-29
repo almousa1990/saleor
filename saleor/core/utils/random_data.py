@@ -21,7 +21,8 @@ from faker.providers import BaseProvider
 from measurement.measures import Weight
 from prices import Money, TaxedMoney
 
-from ...account.models import Address, User
+from ...account.models import User
+from ...address.models import Address
 from ...account.utils import store_user_address
 from ...checkout import AddressType
 from ...core.permissions import (

@@ -146,6 +146,14 @@ class VoucherCreate(ModelMutation):
     @classmethod
     def clean_input(cls, info, instance, data):
         code = data.get("code", None)
+        type = data.get("type", None)
+        
+        if(type != VoucherTypeEnum.SPECIFIC_PRODUCT):
+            data["products"] = []
+            data["collections"] = []
+
+
+
         if code == "":
             data["code"] = generate_promo_code()
         elif not is_available_promo_code(code):

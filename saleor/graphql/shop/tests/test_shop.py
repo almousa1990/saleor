@@ -4,7 +4,7 @@ import graphene
 import pytest
 from django_countries import countries
 
-from ....account.models import Address
+from ....address.models import Address
 from ....core.error_codes import ShopErrorCode
 from ....core.permissions import get_permissions_codename
 from ....site import AuthenticationBackends

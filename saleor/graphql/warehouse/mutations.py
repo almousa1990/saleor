@@ -46,12 +46,6 @@ class WarehouseMixin:
                 error.code = WarehouseErrorCode.REQUIRED.value
                 raise ValidationError({"name": error})
 
-        shipping_zones = cleaned_input.get("shipping_zones", [])
-        if not validate_warehouse_count(shipping_zones, instance):
-            msg = "Shipping zone can be assigned only to one warehouse."
-            raise ValidationError(
-                {"shipping_zones": msg}, code=WarehouseErrorCode.INVALID
-            )
         return cleaned_input
 
     @classmethod

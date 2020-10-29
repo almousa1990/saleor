@@ -388,7 +388,7 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name="user",
             name="addresses",
-            field=models.ManyToManyField(to="account.Address"),
+            field=models.ManyToManyField(to="address.Address"),
         ),
         migrations.AddField(
             model_name="user",
@@ -398,7 +398,7 @@ class Migration(migrations.Migration):
                 on_delete=django.db.models.deletion.SET_NULL,
                 verbose_name="default billing address",
                 blank=True,
-                to="account.Address",
+                to="address.Address",
                 null=True,
             ),
         ),
@@ -410,7 +410,7 @@ class Migration(migrations.Migration):
                 on_delete=django.db.models.deletion.SET_NULL,
                 verbose_name="default shipping address",
                 blank=True,
-                to="account.Address",
+                to="address.Address",
                 null=True,
             ),
         ),

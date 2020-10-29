@@ -173,7 +173,7 @@ class VoucherTranslate(BaseTranslateMutation):
         error_type_field = "translation_errors"
 
 
-class ShippingPriceTranslate(BaseTranslateMutation):
+class ShippingMethodTranslate(BaseTranslateMutation):
     class Arguments:
         id = graphene.ID(required=True, description="Shipping method ID.")
         language_code = graphene.Argument(

@@ -6,10 +6,10 @@ from django.db import models
 from django.db.models import F, Sum
 from django.db.models.functions import Coalesce
 
-from ..account.models import Address
+from ..address.models import Address
 from ..order.models import OrderLine
 from ..product.models import Product, ProductVariant
-from ..shipping.models import ShippingZone
+from ..shipping.models import ShippingProfileWarehouseGroup
 
 
 class WarehouseQueryset(models.QuerySet):
@@ -29,8 +29,8 @@ class Warehouse(models.Model):
     name = models.CharField(max_length=250)
     slug = models.SlugField(max_length=255, unique=True, allow_unicode=True)
     company_name = models.CharField(blank=True, max_length=255)
-    shipping_zones = models.ManyToManyField(
-        ShippingZone, blank=True, related_name="warehouses"
+    shipping_profile_warehouse_groups = models.ManyToManyField(
+        ShippingProfileWarehouseGroup, blank=True, related_name="warehouses"
     )
     address = models.ForeignKey(Address, on_delete=models.PROTECT)
     email = models.EmailField(blank=True, default="")

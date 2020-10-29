@@ -4,7 +4,8 @@ from typing import TYPE_CHECKING
 
 from faker import Faker
 
-from ...account.models import Address, User
+from ...account.models import User
+from ...address.models import Address
 from .random_data import create_address, create_fake_user
 
 if TYPE_CHECKING:

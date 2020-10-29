@@ -5,7 +5,8 @@ from ..base_plugin import BasePlugin
 from . import obfuscate_order
 
 if TYPE_CHECKING:
-    from ...account.models import Address, User
+    from ...account.models import User
+    from ...address.models import Address
     from ...order.models import Order
 
 
