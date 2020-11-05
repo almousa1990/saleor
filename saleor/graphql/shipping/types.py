@@ -185,11 +185,15 @@ class ShippingProfile(CountableDjangoObjectType):
 
     @staticmethod
     def resolve_warehouses_without_rates_count(root: models.ShippingProfile, *_args):
-        query_set = root.warehouse_groups.prefetch_related(Prefetch('shipping_zones', models.ShippingZone.objects.filter(shipping_methods=None))).filter(shipping_zones=None)
+        query_set = root.warehouse_groups.prefetch_related(Prefetch(
+            'shipping_zones', models.ShippingZone.objects.filter(shipping_methods=None))).filter(shipping_zones=None)
         if query_set.exists():
-            return query_set.annotate(no_warehouses=Count('warehouses')).aggregate(sum=Sum('no_warehouses')).get('sum')
+            resolve_warehouses_without_rates_count = query_set.annotate(
+                no_warehouses=Count('warehouses')).aggregate(sum=Sum('no_warehouses')).get('sum')
         else:
-            return 0
+            resolve_warehouses_without_rates_count = 0
+
+        return resolve_warehouses_without_rates_count + warehouse_models.Warehouse.objects.exclude(shipping_profile_warehouse_groups__pk__in=root.warehouse_groups.all().values_list('id', flat=True)).count()
 
     @staticmethod
     def resolve_unassigned_warehouses(root: models.ShippingProfile, *_args):
